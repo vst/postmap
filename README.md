@@ -1,39 +1,32 @@
-# Haskell Project Template
+<h1 align="center">
+    <div>
+        <img alt="postmap" width="320" src="https://github.com/vst/postmap/assets/374793/4dea3f1f-f192-4335-ab15-a0e9b34cdd8e" />
+    </div>
+    <sub>PostgreSQL Database Introspection, Mapping and Code Generation Tool</sub>
+    <p></p>
+    <div>
+        <img alt="GitHub Release" src="https://img.shields.io/github/v/release/vst/postmap?display_name=tag&style=for-the-badge">
+        <img alt="GitHub Issues or Pull Requests" src="https://img.shields.io/github/issues/vst/postmap?style=for-the-badge">
+        <img alt="GitHub Issues or Pull Requests" src="https://img.shields.io/github/issues-pr/vst/postmap?style=for-the-badge">
+    </div>
+</h1>
 
-This is an opinionated template for creating Haskell projects. It uses
-[Nix], [hpack] and [cabal].
+> [!WARNING]
+>
+> This is an experimental project that is in its early stages of
+> development. Both the functionality and API are subject to change at
+> any time.
+>
+> It is not recommended to use this in production or any other
+> critical environment. Use at your own risk.
 
-> **TODO** Provide minimum viable documentation.
+## Development
 
-## Quickstart
-
-Create your repository from this template, clone it on your computer
-and enter its directory.
-
-Then, run following to configure your project:
-
-```sh
-bash ./run-template.sh
-```
-
-It will prompt some questions and configure your project according to
-your answers.
-
-Once it is configured, provision `direnv`:
+Provision Nix shell via `direnv`:
 
 ```sh
 direnv allow
 ```
-
-And run the big, long build command as given in the next section.
-
-Finally, you can remove the `run-template.sh` script:
-
-```sh
-rm run-template.sh
-```
-
-## Development
 
 Big, long build command for the impatient:
 
@@ -45,13 +38,16 @@ hpack &&
     find . -iname "*.nix" -not -path "*/nix/sources.nix" -print0 | xargs --null nixpkgs-fmt &&
     hlint app/ src/ test/ &&
     cabal build -O0 &&
-    cabal run -O0 haskell-template-hebele -- --version &&
+    cabal run -O0 postmap -- --version &&
     cabal v1-test &&
     cabal haddock -O0
 ```
 
+## License
+
+Copyright &copy; 2024 Vehbi Sinan Tunalioglu. This work is licensed
+under [MIT License].
+
 <!-- REFERENCES -->
 
-[Nix]: https://nixos.org
-[hpack]: https://github.com/sol/hpack
-[cabal]: https://www.haskell.org/cabal
+[MIT License]: https://opensource.org/license/mit

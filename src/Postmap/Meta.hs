@@ -4,7 +4,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 -- | This module provides project metadata information definitions.
-module Hebele.Meta where
+module Postmap.Meta where
 
 import Data.Aeson (ToJSON (toEncoding))
 import qualified Data.Aeson as Aeson
@@ -15,24 +15,24 @@ import qualified Data.Time as Time
 import Data.Version (Version, showVersion)
 import qualified GitHash as Githash
 import qualified Language.Haskell.TH as TH
-import qualified Paths_haskell_template_hebele as Paths
+import qualified Paths_postmap as Paths
 import qualified System.Info
 
 
 -- | Application name.
 --
 -- >>> name
--- "haskell-template-hebele"
+-- "postmap"
 name :: T.Text
-name = "haskell-template-hebele"
+name = "postmap"
 
 
 -- | Application title.
 --
 -- >>> title
--- "Haskell Project Template"
+-- "PostgreSQL Database Introspection, Mapping and Code Generation Tool"
 title :: T.Text
-title = "Haskell Project Template"
+title = "PostgreSQL Database Introspection, Mapping and Code Generation Tool"
 
 
 -- | Application version.

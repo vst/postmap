@@ -1,6 +1,6 @@
-name: haskell-template-hebele
+name: postmap
 version: 0.0.0
-github: "vst/haskell-template-hebele"
+github: "vst/postmap"
 license: MIT
 author: "Vehbi Sinan Tunalioglu"
 maintainer: "vst@vsthost.com"
@@ -10,7 +10,7 @@ extra-source-files:
   - README.md
   - CHANGELOG.md
 
-description: Please see the README on GitHub at <https://github.com/vst/haskell-template-hebele#readme>
+description: Please see the README on GitHub at <https://github.com/vst/postmap#readme>
 
 dependencies:
   - base >= 4.7 && < 5
@@ -32,7 +32,7 @@ library:
     - time
 
 executables:
-  haskell-template-hebele:
+  postmap:
     main: Main.hs
     source-dirs: app
     ghc-options:
@@ -43,10 +43,10 @@ executables:
       - -rtsopts
       - -with-rtsopts=-N
     dependencies:
-      - haskell-template-hebele
+      - postmap
 
 tests:
-  haskell-template-hebele-test:
+  postmap-test:
     main: Spec.hs
     source-dirs: test/spec
     ghc-options:
@@ -58,7 +58,7 @@ tests:
       - -with-rtsopts=-N
     dependencies: []
 
-  haskell-template-hebele-doctest:
+  postmap-doctest:
     main: doctest.hs
     source-dirs: test/doctest
     ghc-options:
@@ -66,5 +66,5 @@ tests:
       - -Werror
       - -threaded
     dependencies:
-      - haskell-template-hebele
+      - postmap
       - doctest
