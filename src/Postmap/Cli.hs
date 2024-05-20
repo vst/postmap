@@ -6,10 +6,13 @@ module Postmap.Cli where
 import Control.Applicative ((<**>), (<|>))
 import Control.Monad (join)
 import qualified Data.Aeson as Aeson
+import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import qualified Hasql.Connection
 import qualified Options.Applicative as OA
+import qualified Postmap.Introspect as Introspect
 import qualified Postmap.Meta as Meta
 import System.Exit (ExitCode (..))
 
@@ -36,30 +39,33 @@ cli =
 -- | Option parser for top-level commands.
 optProgram :: OA.Parser (IO ExitCode)
 optProgram =
-  commandGreet
+  commandIntrospect
     <|> commandVersion
 
 
 -- * Commands
 
 
--- ** greet
+-- ** introspect
 
 
--- | Definition for @greet@ CLI command.
-commandGreet :: OA.Parser (IO ExitCode)
-commandGreet = OA.hsubparser (OA.command "greet" (OA.info parser infomod) <> OA.metavar "greet")
+-- | Definition for @introspect@ CLI command.
+commandIntrospect :: OA.Parser (IO ExitCode)
+commandIntrospect = OA.hsubparser (OA.command "introspect" (OA.info parser infomod) <> OA.metavar "introspect")
   where
-    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Greet user." <> OA.footer "This command prints a greeting message to the console."
+    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Introspect database schema." <> OA.footer "This command introspect a database schema and produces its structure."
     parser =
-      doGreet
-        <$> OA.strOption (OA.short 'n' <> OA.long "name" <> OA.value "World" <> OA.showDefault <> OA.help "Whom to greet.")
+      doIntrospect
+        <$> OA.strOption (OA.short 'u' <> OA.long "uri" <> OA.help "Database connection URI.")
+        <*> OA.strOption (OA.short 's' <> OA.long "schema" <> OA.value "public" <> OA.showDefault <> OA.help "Database schema to introspect.")
 
 
--- | @greet@ CLI command program.
-doGreet :: T.Text -> IO ExitCode
-doGreet n = do
-  TIO.putStrLn ("Hello " <> n <> "!")
+-- | @introspect@ CLI command program.
+doIntrospect :: B.ByteString -> T.Text -> IO ExitCode
+doIntrospect u s = do
+  Right conn <- Hasql.Connection.acquire u
+  tables <- Introspect.fetchSchema conn s
+  BLC.putStrLn (Aeson.encode tables)
   pure ExitSuccess
 
 
