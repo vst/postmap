@@ -23,13 +23,18 @@ library:
     - -Wunused-packages
   dependencies:
     - aeson
+    - autodocodec
     - bytestring
     - githash
+    - hasql
+    - hasql-th
     - optparse-applicative
     - string-interpolate
     - template-haskell
     - text
     - time
+    - unordered-containers
+    - vector
 
 executables:
   postmap:
