@@ -9,7 +9,9 @@ module Postmap.Introspect where
 import qualified Autodocodec as ADC
 import qualified Data.Aeson as Aeson
 import Data.Foldable (foldl')
+import Data.Functor.Identity (Identity)
 import qualified Data.HashMap.Strict as HM
+import Data.Hashable (Hashable)
 import qualified Data.List as List
 import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (i)
@@ -22,15 +24,18 @@ import qualified Hasql.Statement
 import qualified Hasql.TH
 import System.Exit (die)
 import System.IO (hPutStrLn, stderr)
+import qualified Text.Parsec
+import qualified Text.Parsec.Language
+import qualified Text.Parsec.Token
 
 
 -- | Data definition for a database table.
 data Table = Table
-  { tableSchema :: !T.Text
-  , tableName :: !T.Text
+  { tableSchema :: !TableSchemaName
+  , tableName :: !TableName
   , tableColumns :: ![Column]
-  , tableUniques :: ![[T.Text]]
-  , tablePrimaryKey :: !(Maybe T.Text)
+  , tableUniques :: ![[ColumnName]]
+  , tablePrimaryKey :: !(Maybe ColumnName)
   }
   deriving stock (Eq, Generic, Show)
   deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec Table)
@@ -47,13 +52,57 @@ instance ADC.HasCodec Table where
         <*> ADC.requiredField "primary_key" "Name of the primary key column, if any." ADC..= tablePrimaryKey
 
 
+newtype TableSchemaName = MkTableSchemaName
+  { unTableSchemaName :: T.Text
+  }
+  deriving stock (Eq, Generic, Show)
+  deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec TableSchemaName)
+
+
+instance Hashable TableSchemaName
+
+
+instance ADC.HasCodec TableSchemaName where
+  codec =
+    ADC.bimapCodec mkTableSchemaName unTableSchemaName ADC.textCodec
+
+
+mkTableSchemaName :: T.Text -> Either String TableSchemaName
+mkTableSchemaName s =
+  either (Left . show) (Right . MkTableSchemaName . T.pack) (Text.Parsec.parse parser "" (T.unpack s))
+  where
+    parser = Text.Parsec.Token.identifier tokenParser
+
+
+newtype TableName = MkTableName
+  { unTableName :: T.Text
+  }
+  deriving stock (Eq, Generic, Show)
+  deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec TableName)
+
+
+instance Hashable TableName
+
+
+instance ADC.HasCodec TableName where
+  codec =
+    ADC.bimapCodec mkTableName unTableName ADC.textCodec
+
+
+mkTableName :: T.Text -> Either String TableName
+mkTableName s =
+  either (Left . show) (Right . MkTableName . T.pack) (Text.Parsec.parse parser "" (T.unpack s))
+  where
+    parser = Text.Parsec.Token.identifier tokenParser
+
+
 -- | Data definition for a database column.
 data Column = Column
-  { columnName :: !T.Text
-  , columnType :: !T.Text
+  { columnName :: !ColumnName
+  , columnType :: !T.Text -- TODO: Use a proper type.
   , columnNullable :: !Bool
   , columnIsPrimaryKey :: !Bool
-  , columnForeignKey :: !(Maybe Reference)
+  , columnForeignKey :: !(Maybe ColumnReference)
   , columnUnique :: !Bool
   }
   deriving stock (Eq, Generic, Show)
@@ -72,23 +121,45 @@ instance ADC.HasCodec Column where
         <*> ADC.requiredField "unique" "Whether the column is unique (alone)." ADC..= columnUnique
 
 
--- | Data definition for a foreign key reference.
-data Reference = Reference
-  { relationSchema :: !T.Text
-  , relationTable :: !T.Text
-  , relationColumn :: !T.Text
+newtype ColumnName = MkColumnName
+  { unColumnName :: T.Text
   }
   deriving stock (Eq, Generic, Show)
-  deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec Reference)
+  deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec ColumnName)
 
 
-instance ADC.HasCodec Reference where
+instance Hashable ColumnName
+
+
+instance ADC.HasCodec ColumnName where
   codec =
-    ADC.object "Reference" $
-      Reference
-        <$> ADC.requiredField "schema" "Schema of the foreign table." ADC..= relationSchema
-        <*> ADC.requiredField "table" "Name of the foreign table." ADC..= relationTable
-        <*> ADC.requiredField "column" "Name of the foreign column." ADC..= relationColumn
+    ADC.bimapCodec mkColumnName unColumnName ADC.textCodec
+
+
+mkColumnName :: T.Text -> Either String ColumnName
+mkColumnName s =
+  either (Left . show) (Right . MkColumnName . T.pack) (Text.Parsec.parse parser "" (T.unpack s))
+  where
+    parser = Text.Parsec.Token.identifier tokenParser
+
+
+-- | Data definition for a foreign key reference.
+data ColumnReference = ColumnReference
+  { columnReferenceSchema :: !TableSchemaName
+  , columnReferenceTable :: !TableName
+  , columnReferenceColumn :: !ColumnName
+  }
+  deriving stock (Eq, Generic, Show)
+  deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec ColumnReference)
+
+
+instance ADC.HasCodec ColumnReference where
+  codec =
+    ADC.object "ColumnReference" $
+      ColumnReference
+        <$> ADC.requiredField "schema" "Schema of the foreign table." ADC..= columnReferenceSchema
+        <*> ADC.requiredField "table" "Name of the foreign table." ADC..= columnReferenceTable
+        <*> ADC.requiredField "column" "Name of the foreign column." ADC..= columnReferenceColumn
 
 
 -- * Internal
@@ -109,28 +180,28 @@ fetchSchema conn schema = do
   let dbFks = compileForeignKeys foreignKeys
   let dbUcs = compileUniqueConstraints uniqueConstraints
   let dbRef = (dbPks, dbFks, dbUcs) :: References
-  pure . List.sortOn ((<>) <$> tableSchema <*> tableName) . fmap snd . HM.toList $ foldl' (go dbRef) mempty columns
+  pure . List.sortOn ((<>) <$> unTableSchemaName . tableSchema <*> unTableName . tableName) . fmap snd . HM.toList $ foldl' (go dbRef) mempty columns
   where
     go refs db c@(schemaName, tableName, _, _, _) =
       addColumn refs c (addTable refs schemaName tableName db)
 
 
-type DbTables = HM.HashMap (T.Text, T.Text) Table
+type DbTables = HM.HashMap (TableSchemaName, TableName) Table
 
 
-type DbPrimaryKeys = HM.HashMap (T.Text, T.Text) T.Text
+type DbPrimaryKeys = HM.HashMap (TableSchemaName, TableName) ColumnName
 
 
-type DbForeignKeys = HM.HashMap (T.Text, T.Text, T.Text) (T.Text, T.Text, T.Text)
+type DbForeignKeys = HM.HashMap (TableSchemaName, TableName, ColumnName) (TableSchemaName, TableName, ColumnName)
 
 
-type DbUniqueConstraints = HM.HashMap (T.Text, T.Text) [[T.Text]]
+type DbUniqueConstraints = HM.HashMap (TableSchemaName, TableName) [[ColumnName]]
 
 
 type References = (DbPrimaryKeys, DbForeignKeys, DbUniqueConstraints)
 
 
-addTable :: References -> T.Text -> T.Text -> DbTables -> DbTables
+addTable :: References -> TableSchemaName -> TableName -> DbTables -> DbTables
 addTable (pks, _fks, ucs) tableSchema tableName db =
   maybe (HM.insert key newTable db) (const db) (HM.lookup key db)
   where
@@ -159,7 +230,7 @@ addColumn (pks, fks, ucs) (schemaName, tableName, columnName, columnNullable, co
         , columnForeignKey =
             case HM.lookup (schemaName, tableName, columnName) fks of
               Nothing -> Nothing
-              Just (relationSchema, relationTable, relationColumn) -> Just Reference {relationSchema, relationTable, relationColumn}
+              Just (columnReferenceSchema, columnReferenceTable, columnReferenceColumn) -> Just ColumnReference {columnReferenceSchema, columnReferenceTable, columnReferenceColumn}
         , columnUnique = [columnName] `elem` fromMaybe [] (HM.lookup key ucs)
         }
 
@@ -188,6 +259,15 @@ compileUniqueConstraints =
 
 
 type StmtTypeColumns =
+  ( TableSchemaName -- Table schema.
+  , TableName -- Table name.
+  , ColumnName -- Column name.
+  , Bool -- Column is nullable.
+  , T.Text -- Column type.
+  )
+
+
+type StmtTypeColumns' =
   ( T.Text -- Table schema.
   , T.Text -- Table name.
   , T.Text -- Column name.
@@ -196,13 +276,18 @@ type StmtTypeColumns =
   )
 
 
+toStmtTypeColumns :: StmtTypeColumns' -> StmtTypeColumns
+toStmtTypeColumns (schema, table, column, nullable, typ) =
+  (MkTableSchemaName schema, MkTableName table, MkColumnName column, nullable, typ)
+
+
 fetchColumns :: Hasql.Connection.Connection -> T.Text -> IO [StmtTypeColumns]
 fetchColumns conn schema = do
   result <- Hasql.Session.run (Hasql.Session.statement schema stmtColumns) conn
-  either (_die . show) (pure . V.toList) result
+  either (_die . show) (pure . fmap toStmtTypeColumns . V.toList) result
 
 
-stmtColumns :: Hasql.Statement.Statement T.Text (V.Vector StmtTypeColumns)
+stmtColumns :: Hasql.Statement.Statement T.Text (V.Vector StmtTypeColumns')
 stmtColumns =
   [Hasql.TH.vectorStatement|
     SELECT "table_schema" :: text
@@ -220,19 +305,31 @@ stmtColumns =
 
 
 type StmtTypePrimaryKeys =
+  ( TableSchemaName -- Table schema.
+  , TableName -- Table name.
+  , ColumnName -- Column name.
+  )
+
+
+type StmtTypePrimaryKeys' =
   ( T.Text -- Table schema.
   , T.Text -- Table name.
   , T.Text -- Column name.
   )
 
 
+toStmtTypePrimaryKeys :: StmtTypePrimaryKeys' -> StmtTypePrimaryKeys
+toStmtTypePrimaryKeys (schema, table, column) =
+  (MkTableSchemaName schema, MkTableName table, MkColumnName column)
+
+
 fetchPrimaryKeys :: Hasql.Connection.Connection -> T.Text -> IO [StmtTypePrimaryKeys]
 fetchPrimaryKeys conn schema = do
   result <- Hasql.Session.run (Hasql.Session.statement schema stmtPrimaryKeys) conn
-  either (_die . show) (pure . V.toList) result
+  either (_die . show) (pure . fmap toStmtTypePrimaryKeys . V.toList) result
 
 
-stmtPrimaryKeys :: Hasql.Statement.Statement T.Text (V.Vector StmtTypePrimaryKeys)
+stmtPrimaryKeys :: Hasql.Statement.Statement T.Text (V.Vector StmtTypePrimaryKeys')
 stmtPrimaryKeys =
   [Hasql.TH.vectorStatement|
     SELECT $1 :: text as "table_schema"
@@ -255,6 +352,16 @@ stmtPrimaryKeys =
 
 
 type StmtTypeForeignKeys =
+  ( TableSchemaName -- Table schema.
+  , TableName -- Table name.
+  , ColumnName -- Column name.
+  , TableSchemaName -- Foreign table schema.
+  , TableName -- Foreign table name.
+  , ColumnName -- Foreign column name.
+  )
+
+
+type StmtTypeForeignKeys' =
   ( T.Text -- Table schema.
   , T.Text -- Table name.
   , T.Text -- Column name.
@@ -264,13 +371,18 @@ type StmtTypeForeignKeys =
   )
 
 
+toStmtTypeForeignKeys :: StmtTypeForeignKeys' -> StmtTypeForeignKeys
+toStmtTypeForeignKeys (schema, table, column, fSchema, fTable, fColumn) =
+  (MkTableSchemaName schema, MkTableName table, MkColumnName column, MkTableSchemaName fSchema, MkTableName fTable, MkColumnName fColumn)
+
+
 fetchForeignKeys :: Hasql.Connection.Connection -> T.Text -> IO [StmtTypeForeignKeys]
 fetchForeignKeys conn schema = do
   result <- Hasql.Session.run (Hasql.Session.statement schema stmtForeignKeys) conn
-  either (_die . show) (pure . V.toList) result
+  either (_die . show) (pure . fmap toStmtTypeForeignKeys . V.toList) result
 
 
-stmtForeignKeys :: Hasql.Statement.Statement T.Text (V.Vector StmtTypeForeignKeys)
+stmtForeignKeys :: Hasql.Statement.Statement T.Text (V.Vector StmtTypeForeignKeys')
 stmtForeignKeys =
   [Hasql.TH.vectorStatement|
     SELECT "tc"."table_schema" :: text as "table_schema"
@@ -294,6 +406,14 @@ stmtForeignKeys =
 
 
 type StmtTypeUniqueConstraints =
+  ( TableSchemaName -- Table schema.
+  , TableName -- Table name.
+  , T.Text -- Constraint name.
+  , V.Vector ColumnName -- Column names.
+  )
+
+
+type StmtTypeUniqueConstraints' =
   ( T.Text -- Table schema.
   , T.Text -- Table name.
   , T.Text -- Constraint name.
@@ -301,13 +421,18 @@ type StmtTypeUniqueConstraints =
   )
 
 
+toStmtTypeUniqueConstraints :: StmtTypeUniqueConstraints' -> StmtTypeUniqueConstraints
+toStmtTypeUniqueConstraints (schema, table, constraint, columns) =
+  (MkTableSchemaName schema, MkTableName table, constraint, V.map MkColumnName columns)
+
+
 fetchUniqueConstraints :: Hasql.Connection.Connection -> T.Text -> IO [StmtTypeUniqueConstraints]
 fetchUniqueConstraints conn schema = do
   result <- Hasql.Session.run (Hasql.Session.statement schema stmtUniqueConstraints) conn
-  either (_die . show) (pure . V.toList) result
+  either (_die . show) (pure . fmap toStmtTypeUniqueConstraints . V.toList) result
 
 
-stmtUniqueConstraints :: Hasql.Statement.Statement T.Text (V.Vector StmtTypeUniqueConstraints)
+stmtUniqueConstraints :: Hasql.Statement.Statement T.Text (V.Vector StmtTypeUniqueConstraints')
 stmtUniqueConstraints =
   [Hasql.TH.vectorStatement|
     SELECT $1 :: text as "table_schema"
@@ -324,6 +449,11 @@ stmtUniqueConstraints =
 
 
 -- ** Helpers
+
+
+tokenParser :: Text.Parsec.Token.GenTokenParser String u Identity
+tokenParser =
+  Text.Parsec.Token.makeTokenParser Text.Parsec.Language.haskellStyle
 
 
 -- | Prints the given error messages and kills the program.

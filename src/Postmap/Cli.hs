@@ -3,10 +3,12 @@
 -- | This module provides top-level definitions for the CLI program.
 module Postmap.Cli where
 
+import qualified Autodocodec.Yaml as ADC.Yaml
 import Control.Applicative ((<**>), (<|>))
 import Control.Monad (join)
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
@@ -14,6 +16,7 @@ import qualified Hasql.Connection
 import qualified Options.Applicative as OA
 import qualified Postmap.Introspect as Introspect
 import qualified Postmap.Meta as Meta
+import qualified Postmap.Spec as Spec
 import System.Exit (ExitCode (..))
 
 
@@ -40,6 +43,7 @@ cli =
 optProgram :: OA.Parser (IO ExitCode)
 optProgram =
   commandIntrospect
+    <|> commandSchema
     <|> commandVersion
 
 
@@ -66,6 +70,50 @@ doIntrospect u s = do
   Right conn <- Hasql.Connection.acquire u
   tables <- Introspect.fetchSchema conn s
   BLC.putStrLn (Aeson.encode tables)
+  pure ExitSuccess
+
+
+-- ** schema
+
+
+-- | Definition for @schema@ CLI command.
+commandSchema :: OA.Parser (IO ExitCode)
+commandSchema = OA.hsubparser (OA.command "schema" (OA.info parser infomod) <> OA.metavar "schema")
+  where
+    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Schema commands." <> OA.footer "This command provides schema commands."
+    parser =
+      commandSchemaInit
+
+
+-- ** schema init
+
+
+-- | Definition for @schema init@ CLI command.
+commandSchemaInit :: OA.Parser (IO ExitCode)
+commandSchemaInit = OA.hsubparser (OA.command "init" (OA.info parser infomod) <> OA.metavar "init")
+  where
+    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Initialize schema." <> OA.footer "This command initializes the schema."
+    parser =
+      doSchemaInit <$> (argEmpty <|> argDatabase)
+    argEmpty =
+      InitSourceEmpty <$ OA.switch (OA.short 'e' <> OA.long "empty" <> OA.help "Initialize empty schema.")
+    argDatabase =
+      InitSourceDatabase
+        <$> OA.strOption (OA.short 'u' <> OA.long "uri" <> OA.help "Database connection URI.")
+        <*> OA.strOption (OA.short 's' <> OA.long "schema" <> OA.value "public" <> OA.showDefault <> OA.help "Database schema to initialize.")
+
+
+data InitSource
+  = InitSourceEmpty
+  | InitSourceDatabase B.ByteString T.Text
+
+
+doSchemaInit :: InitSource -> IO ExitCode
+doSchemaInit InitSourceEmpty = BLC.putStrLn (Aeson.encode Spec.emptySchema) >> pure ExitSuccess
+doSchemaInit (InitSourceDatabase u s) = do
+  Right conn <- Hasql.Connection.acquire u
+  tables <- Introspect.fetchSchema conn s
+  BC.putStrLn (ADC.Yaml.encodeYamlViaCodec (Spec.fromSchema tables))
   pure ExitSuccess
 
 
