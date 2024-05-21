@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
 
 -- | This module provides top-level definitions for the CLI program.
 module Postmap.Cli where
@@ -17,7 +18,9 @@ import qualified Options.Applicative as OA
 import qualified Postmap.Introspect as Introspect
 import qualified Postmap.Meta as Meta
 import qualified Postmap.Spec as Spec
+import qualified Postmap.Tui.App as Tui
 import System.Exit (ExitCode (..))
+import qualified Zamazingo.Text as Z.Text
 
 
 -- * Entrypoint
@@ -83,6 +86,7 @@ commandSchema = OA.hsubparser (OA.command "schema" (OA.info parser infomod) <> O
     infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Schema commands." <> OA.footer "This command provides schema commands."
     parser =
       commandSchemaInit
+        <|> commandSchemaTui
 
 
 -- ** schema init
@@ -128,6 +132,31 @@ commandVersion = OA.hsubparser (OA.command "version" (OA.info parser infomod) <>
     parser =
       doVersion
         <$> OA.switch (OA.short 'j' <> OA.long "json" <> OA.help "Format output in JSON.")
+
+
+-- ** schema tui
+
+
+-- | Definition for @schema tui@ CLI command.
+commandSchemaTui :: OA.Parser (IO ExitCode)
+commandSchemaTui = OA.hsubparser (OA.command "tui" (OA.info parser infomod) <> OA.metavar "tui")
+  where
+    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Run schema editor." <> OA.footer "This command runs the schema TUI."
+    parser =
+      doSchemaTui
+        <$> OA.strOption (OA.short 'f' <> OA.long "file" <> OA.help "Path to the schema file.")
+
+
+doSchemaTui :: FilePath -> IO ExitCode
+doSchemaTui fp = do
+  eSchema <- ADC.Yaml.eitherDecodeYamlViaCodec @Spec.Spec <$> B.readFile fp
+  case eSchema of
+    Left err -> do
+      TIO.putStrLn ("Error while parsing schema file: " <> Z.Text.tshow err)
+      pure (ExitFailure 1)
+    Right schema -> do
+      Tui.tui schema
+      pure ExitSuccess
 
 
 -- | @version@ CLI command program.

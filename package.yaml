@@ -25,6 +25,7 @@ library:
     - aeson
     - autodocodec
     - autodocodec-yaml
+    - brick
     - bytestring
     - githash
     - hashable
