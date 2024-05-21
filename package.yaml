@@ -26,9 +26,11 @@ library:
     - autodocodec
     - bytestring
     - githash
+    - hashable
     - hasql
     - hasql-th
     - optparse-applicative
+    - parsec
     - string-interpolate
     - template-haskell
     - text
