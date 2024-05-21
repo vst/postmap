@@ -24,6 +24,7 @@ library:
   dependencies:
     - aeson
     - autodocodec
+    - autodocodec-yaml
     - bytestring
     - githash
     - hashable
