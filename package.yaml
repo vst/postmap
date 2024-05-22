@@ -31,6 +31,7 @@ library:
     - hashable
     - hasql
     - hasql-th
+    - microlens-th
     - optparse-applicative
     - parsec
     - string-interpolate
@@ -39,6 +40,7 @@ library:
     - time
     - unordered-containers
     - vector
+    - vty
 
 executables:
   postmap:
