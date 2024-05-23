@@ -25,6 +25,7 @@ library:
     - aeson
     - autodocodec
     - autodocodec-yaml
+    - brick
     - bytestring
     - githash
     - hashable
@@ -38,6 +39,7 @@ library:
     - time
     - unordered-containers
     - vector
+    - vty
 
 executables:
   postmap:
