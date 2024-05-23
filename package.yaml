@@ -31,7 +31,6 @@ library:
     - hashable
     - hasql
     - hasql-th
-    - microlens-th
     - optparse-applicative
     - parsec
     - string-interpolate

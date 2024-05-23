@@ -18,7 +18,7 @@ import qualified Options.Applicative as OA
 import qualified Postmap.Introspect as Introspect
 import qualified Postmap.Meta as Meta
 import qualified Postmap.Spec as Spec
-import qualified Postmap.Tui.App as Tui
+import qualified Postmap.Tui as Tui
 import System.Exit (ExitCode (..))
 import qualified Zamazingo.Text as Z.Text
 
@@ -155,7 +155,7 @@ doSchemaTui fp = do
       TIO.putStrLn ("Error while parsing schema file: " <> Z.Text.tshow err)
       pure (ExitFailure 1)
     Right schema -> do
-      Tui.tui schema
+      Tui.runTui schema
       pure ExitSuccess
 
 
