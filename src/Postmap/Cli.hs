@@ -15,6 +15,7 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Hasql.Connection
 import qualified Options.Applicative as OA
+import qualified Postmap.Diagrams as Diagrams
 import qualified Postmap.Introspect as Introspect
 import qualified Postmap.Meta as Meta
 import qualified Postmap.Spec as Spec
@@ -87,6 +88,7 @@ commandSchema = OA.hsubparser (OA.command "schema" (OA.info parser infomod) <> O
     parser =
       commandSchemaInit
         <|> commandSchemaTui
+        <|> commandSchemaDiagrams
 
 
 -- ** schema init
@@ -121,19 +123,6 @@ doSchemaInit (InitSourceDatabase u s) = do
   pure ExitSuccess
 
 
--- ** version
-
-
--- | Definition for @version@ CLI command.
-commandVersion :: OA.Parser (IO ExitCode)
-commandVersion = OA.hsubparser (OA.command "version" (OA.info parser infomod) <> OA.metavar "version")
-  where
-    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Show version and build information." <> OA.footer "This command shows version and build information."
-    parser =
-      doVersion
-        <$> OA.switch (OA.short 'j' <> OA.long "json" <> OA.help "Format output in JSON.")
-
-
 -- ** schema tui
 
 
@@ -157,6 +146,45 @@ doSchemaTui fp = do
     Right schema -> do
       Tui.runTui schema
       pure ExitSuccess
+
+
+-- ** schema diagrams
+
+
+-- | Definition for @schema diagrams@ CLI command.
+commandSchemaDiagrams :: OA.Parser (IO ExitCode)
+commandSchemaDiagrams = OA.hsubparser (OA.command "diagrams" (OA.info parser infomod) <> OA.metavar "diagrams")
+  where
+    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Produce Diagrams." <> OA.footer "This command produces diagrams."
+    parser =
+      doSchemaDiagrams
+        <$> OA.strOption (OA.short 'f' <> OA.long "file" <> OA.help "Path to the schema file.")
+        <*> OA.strOption (OA.short 'o' <> OA.long "output-directory" <> OA.help "Path to output directory.")
+
+
+doSchemaDiagrams :: FilePath -> FilePath -> IO ExitCode
+doSchemaDiagrams fp dp = do
+  eSchema <- ADC.Yaml.eitherDecodeYamlViaCodec @Spec.Spec <$> B.readFile fp
+  case eSchema of
+    Left err -> do
+      TIO.putStrLn ("Error while parsing schema file: " <> Z.Text.tshow err)
+      pure (ExitFailure 1)
+    Right schema -> do
+      Diagrams.runDiagrams dp schema
+      pure ExitSuccess
+
+
+-- ** version
+
+
+-- | Definition for @version@ CLI command.
+commandVersion :: OA.Parser (IO ExitCode)
+commandVersion = OA.hsubparser (OA.command "version" (OA.info parser infomod) <> OA.metavar "version")
+  where
+    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Show version and build information." <> OA.footer "This command shows version and build information."
+    parser =
+      doVersion
+        <$> OA.switch (OA.short 'j' <> OA.long "json" <> OA.help "Format output in JSON.")
 
 
 -- | @version@ CLI command program.
