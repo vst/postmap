@@ -6,8 +6,10 @@ module Postmap.Spec.FromSchema where
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.List as List
+import qualified Data.Text as T
 import Postmap.Introspect (Column (..), ColumnName (..), ColumnReference (..), Table (..), TableName (..))
 import Postmap.Spec.Types (Field (..), FieldName (..), FieldReference (..), Record (..), RecordName (..), Spec (..))
+import qualified Text.Casing as Casing
 
 
 fromSchemaJson :: BL.ByteString -> Either String Spec
@@ -70,12 +72,14 @@ fromColumn Column {..} =
     }
 
 
-mkFieldNameFromColumnName :: ColumnName -> FieldName
-mkFieldNameFromColumnName = MkFieldName . unColumnName
-
-
 mkRecordNameFromTableName :: TableName -> RecordName
-mkRecordNameFromTableName = MkRecordName . unTableName
+mkRecordNameFromTableName =
+  MkRecordName . T.pack . Casing.pascal . T.unpack . unTableName
+
+
+mkFieldNameFromColumnName :: ColumnName -> FieldName
+mkFieldNameFromColumnName =
+  MkFieldName . T.pack . Casing.camel . T.unpack . unColumnName
 
 
 mkFieldReferenceFromColumnReference :: ColumnReference -> FieldReference
