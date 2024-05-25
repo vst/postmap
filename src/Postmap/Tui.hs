@@ -311,7 +311,7 @@ renderRecordDetailsFieldListItem isSelected Field {..} =
   where
     widget =
       Brick.hBox
-        [ Brick.txt [i|#{unFieldName fieldName} (#{fieldType})|]
+        [ Brick.txt [i|#{unFieldName fieldName} (#{fromMaybe "<unknown>" fieldType})|]
         , Brick.txt " - "
         , Brick.txt [i|#{unColumnName fieldColumnName} (#{fieldColumnType})|]
         ]
@@ -328,7 +328,7 @@ renderRecordFieldPreview AppState {..} =
     Just (_, Field {..}) ->
       Brick.vBox
         [ boxed "Name" (unFieldName fieldName)
-        , boxed "Type" fieldType
+        , boxed "Type" (fromMaybe "<unknown>" fieldType)
         , boxed "Column Name" (unColumnName fieldColumnName)
         , boxed "Column Type" fieldColumnType
         , boxed "Not Nullable" $ if fieldNotNullable then "Not-Nullable" else "Nullable"

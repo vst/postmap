@@ -61,10 +61,10 @@ fromColumn :: Column -> Field
 fromColumn Column {..} =
   Field
     { fieldName = mkFieldNameFromColumnName columnName
-    , fieldType = columnType
+    , fieldType = Nothing
     , fieldColumnName = columnName
     , fieldColumnType = columnType
-    , fieldNotNullable = columnNullable
+    , fieldNotNullable = not columnNullable
     , fieldIsPrimaryKey = columnIsPrimaryKey
     , fieldIsUnique = columnUnique
     , fieldReference = fmap mkFieldReferenceFromColumnReference columnForeignKey
