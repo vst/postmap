@@ -124,7 +124,7 @@ instance ADC.HasCodec Column where
 newtype ColumnName = MkColumnName
   { unColumnName :: T.Text
   }
-  deriving stock (Eq, Generic, Show)
+  deriving stock (Eq, Generic, Ord, Show)
   deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec ColumnName)
 
 

@@ -27,6 +27,7 @@ library:
     - autodocodec-yaml
     - brick
     - bytestring
+    - casing
     - githash
     - hashable
     - hasql

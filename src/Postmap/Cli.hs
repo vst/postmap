@@ -11,11 +11,14 @@ import qualified Data.Aeson as Aeson
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy.Char8 as BLC
+import Data.Either (rights)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Hasql.Connection
 import qualified Options.Applicative as OA
 import qualified Postmap.Diagrams as Diagrams
+import qualified Postmap.Gencode.Haskell as Gencode.Haskell
+import Postmap.Introspect (mkColumnName)
 import qualified Postmap.Introspect as Introspect
 import qualified Postmap.Meta as Meta
 import qualified Postmap.Spec as Spec
@@ -48,6 +51,7 @@ optProgram :: OA.Parser (IO ExitCode)
 optProgram =
   commandIntrospect
     <|> commandSchema
+    <|> commandGencode
     <|> commandVersion
 
 
@@ -107,19 +111,21 @@ commandSchemaInit = OA.hsubparser (OA.command "init" (OA.info parser infomod) <>
       InitSourceDatabase
         <$> OA.strOption (OA.short 'u' <> OA.long "uri" <> OA.help "Database connection URI.")
         <*> OA.strOption (OA.short 's' <> OA.long "schema" <> OA.value "public" <> OA.showDefault <> OA.help "Database schema to initialize.")
+        <*> OA.strOption (OA.short 'o' <> OA.long "column-ordering" <> OA.value "" <> OA.showDefault <> OA.help "Preferred column ordering.")
 
 
 data InitSource
   = InitSourceEmpty
-  | InitSourceDatabase B.ByteString T.Text
+  | InitSourceDatabase B.ByteString T.Text T.Text
 
 
 doSchemaInit :: InitSource -> IO ExitCode
 doSchemaInit InitSourceEmpty = BLC.putStrLn (Aeson.encode Spec.emptySchema) >> pure ExitSuccess
-doSchemaInit (InitSourceDatabase u s) = do
+doSchemaInit (InitSourceDatabase u s os) = do
   Right conn <- Hasql.Connection.acquire u
   tables <- Introspect.fetchSchema conn s
-  BC.putStrLn (ADC.Yaml.encodeYamlViaCodec (Spec.fromSchema tables))
+  let ordering = rights $ fmap mkColumnName (T.splitOn "," os)
+  BC.putStrLn (ADC.Yaml.encodeYamlViaCodec (Spec.fromSchema ordering tables))
   pure ExitSuccess
 
 
@@ -171,6 +177,50 @@ doSchemaDiagrams fp dp = do
       pure (ExitFailure 1)
     Right schema -> do
       Diagrams.runDiagrams dp schema
+      pure ExitSuccess
+
+
+-- ** gencode
+
+
+-- | Definition for @gencode@ CLI command.
+commandGencode :: OA.Parser (IO ExitCode)
+commandGencode = OA.hsubparser (OA.command "gencode" (OA.info parser infomod) <> OA.metavar "gencode")
+  where
+    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Code Generation Commands." <> OA.footer "This command provides code generationg commands."
+    parser =
+      commandGencodeHaskell
+
+
+-- ** gencode haskell
+
+
+-- | Definition for @gencode haskell@ CLI command.
+commandGencodeHaskell :: OA.Parser (IO ExitCode)
+commandGencodeHaskell = OA.hsubparser (OA.command "haskell" (OA.info parser infomod) <> OA.metavar "haskell")
+  where
+    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Produce Haskell Code." <> OA.footer "This command produces Haskell code."
+    parser =
+      doGencodeHaskell
+        <$> OA.strOption (OA.short 'f' <> OA.long "file" <> OA.help "Path to the schema file.")
+        <*> OA.strOption (OA.short 'm' <> OA.long "module" <> OA.help "Module name.")
+        <*> OA.strOption (OA.short 'o' <> OA.long "output-directory" <> OA.help "Path to output directory.")
+
+
+doGencodeHaskell :: FilePath -> T.Text -> FilePath -> IO ExitCode
+doGencodeHaskell fp mn dp = do
+  eSchema <- ADC.Yaml.eitherDecodeYamlViaCodec @Spec.Spec <$> B.readFile fp
+  let config =
+        Gencode.Haskell.Config
+          { Gencode.Haskell.configDirectorySrc = dp
+          , Gencode.Haskell.configModuleName = mn
+          }
+  case eSchema of
+    Left err -> do
+      TIO.putStrLn ("Error while parsing schema file: " <> Z.Text.tshow err)
+      pure (ExitFailure 1)
+    Right schema -> do
+      Gencode.Haskell.generateHaskell config schema
       pure ExitSuccess
 
 

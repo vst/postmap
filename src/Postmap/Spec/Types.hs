@@ -98,7 +98,7 @@ mkRecordName s =
 
 data Field = Field
   { fieldName :: !FieldName
-  , fieldType :: !T.Text
+  , fieldType :: !(Maybe T.Text)
   , fieldColumnName :: !ColumnName
   , fieldColumnType :: !T.Text
   , fieldNotNullable :: !Bool
