@@ -4,13 +4,18 @@
 
 module Postmap.Gencode.Haskell where
 
+import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.List as List
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.String.Interpolate (i)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TLE
 import Postmap.Introspect (ColumnName (..), TableName (..), TableSchemaName (..))
 import Postmap.Spec (Field (..), FieldName (..), FieldReference (..), Record (..), RecordName (..), Spec (..))
+import System.Exit
+import qualified System.Process.Typed as TP
 import qualified Text.Casing as Casing
 
 
@@ -44,15 +49,17 @@ configOutputIdsModuleFile config =
 generateHaskell :: Config -> Spec -> IO ()
 generateHaskell config@Config {..} Spec {..} = do
   recmods <- mapM (generateRecord config) specRecords
-  TIO.writeFile (configOutputIdsModuleFile config) (mkIdsModule config specRecords)
-  TIO.writeFile
-    (configOutputDirectory config <> ".hs")
-    [i|module #{configModuleName} (
+  contentIdsModule <- formatCode $ mkIdsModule config specRecords
+  reexportModule <-
+    formatCode
+      [i|module #{configModuleName} (
   #{T.intercalate ",\n  " $ fmap ("module " <>) recmods}
 ) where
 
 #{T.intercalate "\n" $ fmap ("import " <>) recmods}
 |]
+  TIO.writeFile (configOutputIdsModuleFile config) contentIdsModule
+  TIO.writeFile (configOutputDirectory config <> ".hs") reexportModule
 
 
 mkIdsModule :: Config -> [Record] -> T.Text
@@ -63,11 +70,12 @@ mkIdsModule Config {..} records =
         List.nub . List.sort $
           "Autodocodec"
             : "Data.Aeson"
-            : "Data.Aeson"
+            : "Data.Either"
             : "Data.Eq"
+            : "Data.Maybe"
             : "Data.OpenApi"
-            : "Data.OpenApi"
-            : "GHC.Enum"
+            : "Data.Ord"
+            : "Data.UUID"
             : "Rel8"
             : "Servant"
             : "Text.Show"
@@ -83,13 +91,27 @@ mkIdsModule Config {..} records =
 {-\# LANGUAGE RecordWildCards \#-}
 {-\# LANGUAGE StandaloneDeriving \#-}
 {-\# LANGUAGE TypeOperators \#-}
+{-\# OPTIONS_GHC -Wno-orphans \#-}
 
 -- | This module provides for identifiers definitions for records.
 module #{configModuleName}.Identifiers where
 
+import Autodocodec.OpenAPI ()
+import Prelude (pure, (.))
 #{T.intercalate "\n" (fmap ("import qualified " <>) modules)}
 
+
 #{T.intercalate "\n\n" (fmap snd ids)}
+
+
+instance Autodocodec.HasCodec Data.UUID.UUID where
+  codec =
+    Autodocodec.named "UUID" codec
+    where
+      parse = Data.Maybe.maybe (Data.Either.Left "Invalid UUID value") pure . Data.UUID.fromText
+      codec =
+        Autodocodec.bimapCodec parse Data.UUID.toText Autodocodec.textCodec
+          Autodocodec.<?> "Type representing Universally Unique Identifiers (UUID) as specified in RFC 4122."
 |]
 
 
@@ -109,16 +131,17 @@ mkRecordId Record {..} =
 newtype #{tName} = #{cName}
   { _un#{tName} :: #{tType}
   }
-  deriving newtype (Rel8.DBEq, Rel8.DBType, GHC.Enum.Bounded, Data.Eq.Eq, Text.Show, Data.OpenApi.ToParamSchema, Servant.FromHttpApiData)
+  deriving newtype (Rel8.DBEq, Rel8.DBType, Data.Eq.Eq, Data.Ord.Ord, Text.Show.Show, Data.OpenApi.ToParamSchema, Servant.FromHttpApiData)
   deriving (Data.Aeson.FromJSON, Data.Aeson.ToJSON, Data.OpenApi.ToSchema) via (Autodocodec.Autodocodec #{tName})
 
 
 instance Autodocodec.HasCodec #{tName} where
-  codec = Autodocodec.named _type _codec Autodocodec.<?> _docs
+  codec =
+    Autodocodec.named _type _codec Autodocodec.<?> _docs
     where
       _type = "#{tName}"
       _docs = "#{title} Identifier."
-      _codec = Autodocodec.dimapCodec #{tName} _un#{tName} Autodocodec.codec
+      _codec = Autodocodec.dimapCodec #{cName} _un#{tName} Autodocodec.codec
 |]
             )
 
@@ -127,7 +150,8 @@ generateRecord :: Config -> Record -> IO T.Text
 generateRecord config@Config {..} record =
   let (n, dt) = mkRecordDataType config record
    in do
-        TIO.writeFile (configOutputRecordModuleFile config n) dt
+        content <- formatCode dt
+        TIO.writeFile (configOutputRecordModuleFile config n) content
         pure $ configModuleName <> ".Records." <> n
 
 
@@ -169,6 +193,8 @@ mkRecordDataType config@Config {..} record@Record {..} =
 -- | This module provides for /#{title}/ record definition, its database mapping and other related definitions.
 module #{configModuleName}.Records.#{cnsName} where
 
+import #{configModuleName}.Identifiers
+import Prelude (($))
 #{T.intercalate "\n" (fmap ("import qualified " <>) modules)}
 
 
@@ -227,10 +253,10 @@ table#{cnsName} =
 
 
 mkRecordDataTypeField :: Config -> Record -> Field -> (T.Text, T.Text)
-mkRecordDataTypeField Config {..} record@Record {..} field@Field {..} =
+mkRecordDataTypeField _config record@Record {..} field@Field {..} =
   let fName = mkRecordFieldName record field
       fType'
-        | fieldIsPrimaryKey = configModuleName <> ".Identifiers." <> mkRecordIdTypeName recordName
+        | fieldIsPrimaryKey = mkRecordIdTypeName recordName
         | otherwise = case fieldReference of
             Just FieldReference {..} -> mkRecordIdTypeName fieldReferenceRecord
             Nothing -> fromMaybe (defFieldType fieldColumnType) fieldType
@@ -307,7 +333,7 @@ mkRecordFieldName' rn fn =
 
 mkRecordIdTypeName :: RecordName -> T.Text
 mkRecordIdTypeName rn =
-  mkRecordConstructorName' rn <> "Id"
+  unRecordName rn <> "Id"
 
 
 lowerFirst :: T.Text -> T.Text
@@ -324,3 +350,14 @@ filterMaybe :: (a -> Bool) -> a -> Maybe a
 filterMaybe p a
   | p a = Just a
   | otherwise = Nothing
+
+
+-- | Runs external program "fourmolu" to format Haskell code.
+formatCode :: T.Text -> IO T.Text
+formatCode src = do
+  let src' = TP.byteStringInput (TLE.encodeUtf8 (TL.fromStrict src))
+  let proc = TP.setStdin src' $ TP.proc "fourmolu" ["--stdin-input-file", "-"]
+  (exitCode, out, err) <- TP.readProcess proc
+  case exitCode of
+    ExitSuccess -> pure (TL.toStrict (TLE.decodeUtf8 out))
+    ExitFailure _ -> error ("ERROR: Failed to format Haskell code using fourmolu" <> BLC.unpack err)
