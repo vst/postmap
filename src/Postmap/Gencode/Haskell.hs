@@ -4,13 +4,18 @@
 
 module Postmap.Gencode.Haskell where
 
+import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.List as List
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.String.Interpolate (i)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TLE
 import Postmap.Introspect (ColumnName (..), TableName (..), TableSchemaName (..))
 import Postmap.Spec (Field (..), FieldName (..), FieldReference (..), Record (..), RecordName (..), Spec (..))
+import System.Exit
+import qualified System.Process.Typed as TP
 import qualified Text.Casing as Casing
 
 
@@ -44,15 +49,17 @@ configOutputIdsModuleFile config =
 generateHaskell :: Config -> Spec -> IO ()
 generateHaskell config@Config {..} Spec {..} = do
   recmods <- mapM (generateRecord config) specRecords
-  TIO.writeFile (configOutputIdsModuleFile config) (mkIdsModule config specRecords)
-  TIO.writeFile
-    (configOutputDirectory config <> ".hs")
-    [i|module #{configModuleName} (
+  contentIdsModule <- formatCode $ mkIdsModule config specRecords
+  reexportModule <-
+    formatCode
+      [i|module #{configModuleName} (
   #{T.intercalate ",\n  " $ fmap ("module " <>) recmods}
 ) where
 
 #{T.intercalate "\n" $ fmap ("import " <>) recmods}
 |]
+  TIO.writeFile (configOutputIdsModuleFile config) contentIdsModule
+  TIO.writeFile (configOutputDirectory config <> ".hs") reexportModule
 
 
 mkIdsModule :: Config -> [Record] -> T.Text
@@ -143,7 +150,8 @@ generateRecord :: Config -> Record -> IO T.Text
 generateRecord config@Config {..} record =
   let (n, dt) = mkRecordDataType config record
    in do
-        TIO.writeFile (configOutputRecordModuleFile config n) dt
+        content <- formatCode dt
+        TIO.writeFile (configOutputRecordModuleFile config n) content
         pure $ configModuleName <> ".Records." <> n
 
 
@@ -342,3 +350,14 @@ filterMaybe :: (a -> Bool) -> a -> Maybe a
 filterMaybe p a
   | p a = Just a
   | otherwise = Nothing
+
+
+-- | Runs external program "fourmolu" to format Haskell code.
+formatCode :: T.Text -> IO T.Text
+formatCode src = do
+  let src' = TP.byteStringInput (TLE.encodeUtf8 (TL.fromStrict src))
+  let proc = TP.setStdin src' $ TP.proc "fourmolu" ["--stdin-input-file", "-"]
+  (exitCode, out, err) <- TP.readProcess proc
+  case exitCode of
+    ExitSuccess -> pure (TL.toStrict (TLE.decodeUtf8 out))
+    ExitFailure _ -> error ("ERROR: Failed to format Haskell code using fourmolu" <> BLC.unpack err)
