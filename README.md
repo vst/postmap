@@ -43,6 +43,12 @@ hpack &&
     cabal haddock -O0
 ```
 
+Use following command to lint, build, test and haddock the codebase:
+
+```sh
+dev-test-build
+```
+
 ## License
 
 Copyright &copy; 2024 Vehbi Sinan Tunalioglu. This work is licensed

@@ -68,6 +68,27 @@ let
   ## SHELL ##
   ###########
 
+  ## Test and build script for development:
+  dev-test-build = pkgs.writeShellScriptBin "dev-test-build" ''
+    #!/usr/bin/env bash
+
+    ## Fail on any error:
+    set -e
+
+    ## Show commands executed:
+    set -x
+
+    hpack
+    fourmolu --mode check app/ src/ test/
+    prettier --check .
+    find . -iname "*.nix" -not -path "*/nix/sources.nix" -print0 | xargs --null nixpkgs-fmt --check
+    hlint app/ src/ test/
+    cabal build -O0
+    cabal run -O0 postmap -- --version
+    cabal v1-test
+    cabal haddock -O0 --haddock-quickjump --haddock-html-location='https://hackage.haskell.org/package/$pkg-$version/docs' --haddock-hyperlink-source
+  '';
+
   ## Prepare Nix shell:
   thisShell = thisHaskell.shellFor {
     ## Define packages for the shell:
@@ -98,6 +119,9 @@ let
       pkgs.nixpkgs-fmt
       pkgs.nodePackages.prettier
       pkgs.upx
+
+      ## Our custom development scripts:
+      dev-test-build
     ];
   };
 
