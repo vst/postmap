@@ -63,6 +63,16 @@ import #{configModuleName}.Identifiers
 |]
   TIO.writeFile (configOutputIdsModuleFile config) contentIdsModule
   TIO.writeFile (configOutputDirectory config <> ".hs") reexportModule
+  putStrLn "Haskell code generation completed."
+  putStrLn "Some extensions are used. You may want to use following hlint rule:\n"
+  let extensions = ["DeriveAnyClass", "DeriveGeneric", "DerivingVia", "DuplicateRecordFields", "FlexibleInstances", "NoImplicitPrelude", "OverloadedStrings", "StandaloneDeriving", "TypeOperators"]
+  putStrLn "- extensions:"
+  putStrLn "    - default: false # All extension are banned by default."
+  putStrLn "    - name:"
+  mapM_ (putStrLn . ("        - " <>)) extensions
+  putStrLn "\nYou may also want to use following hlint rule for qualified imports:\n"
+  putStrLn [i|    - { name: #{configModuleName}, as: DB.Model, importStyle: qualified, asRequired: true }|]
+  putStrLn [i|    - { name: #{configModuleName}.**, within: [#{configModuleName}, #{configModuleName}.**] }|]
 
 
 mkIdsModule :: Config -> [Record] -> T.Text
