@@ -54,9 +54,11 @@ generateHaskell config@Config {..} Spec {..} = do
   reexportModule <-
     formatCode
       [i|module #{configModuleName} (
+  module #{configModuleName}.Identifiers,
   #{T.intercalate ",\n  " $ fmap ("module " <>) recmods}
 ) where
 
+import #{configModuleName}.Identifiers
 #{T.intercalate "\n" $ fmap ("import " <>) recmods}
 |]
   TIO.writeFile (configOutputIdsModuleFile config) contentIdsModule
