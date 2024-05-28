@@ -83,17 +83,12 @@ mkIdsModule Config {..} records =
             : "Servant"
             : "Text.Show"
             : modules'
-   in [i|{-\# LANGUAGE DeriveAnyClass \#-}
-{-\# LANGUAGE DeriveGeneric \#-}
-{-\# LANGUAGE DerivingVia \#-}
+   in [i|{-\# LANGUAGE DerivingVia \#-}
 {-\# LANGUAGE DuplicateRecordFields \#-}
 {-\# LANGUAGE FlexibleInstances \#-}
 {-\# LANGUAGE GeneralizedNewtypeDeriving \#-}
 {-\# LANGUAGE NoImplicitPrelude \#-}
 {-\# LANGUAGE OverloadedStrings \#-}
-{-\# LANGUAGE RecordWildCards \#-}
-{-\# LANGUAGE StandaloneDeriving \#-}
-{-\# LANGUAGE TypeOperators \#-}
 {-\# OPTIONS_GHC -Wno-orphans \#-}
 
 -- | This module provides for identifiers definitions for records.
@@ -186,10 +181,8 @@ mkRecordDataType config@Config {..} record@Record {..} =
 {-\# LANGUAGE DerivingVia \#-}
 {-\# LANGUAGE DuplicateRecordFields \#-}
 {-\# LANGUAGE FlexibleInstances \#-}
-{-\# LANGUAGE GeneralizedNewtypeDeriving \#-}
 {-\# LANGUAGE NoImplicitPrelude \#-}
 {-\# LANGUAGE OverloadedStrings \#-}
-{-\# LANGUAGE RecordWildCards \#-}
 {-\# LANGUAGE StandaloneDeriving \#-}
 {-\# LANGUAGE TypeOperators \#-}
 
