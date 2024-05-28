@@ -169,7 +169,7 @@ mkRecordDataType config@Config {..} record@Record {..} =
       modules'' = mapMaybe (filterMaybe (not . T.null) . T.dropEnd 1 . T.dropWhileEnd (/= '.') . fst) iFlds
       modules' = ["Data.Maybe" | not (all fieldNotNullable recordFields)] <> modules''
       modules =
-        List.nub . List.sort $
+        filter (if length iFlds > 1 then const True else (/= "Control.Applicative")) . List.nub . List.sort $
           "Rel8"
             : "GHC.Generics"
             : "Data.Eq"
