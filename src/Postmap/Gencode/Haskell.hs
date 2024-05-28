@@ -89,7 +89,8 @@ mkIdsModule Config {..} records =
 {-\# LANGUAGE GeneralizedNewtypeDeriving \#-}
 {-\# LANGUAGE NoImplicitPrelude \#-}
 {-\# LANGUAGE OverloadedStrings \#-}
-{-\# OPTIONS_GHC -Wno-orphans \#-}
+{-\# OPTIONS_GHC -Wno-orphans -Wno-unrecognised-pragmas \#-}
+{-\# HLINT ignore "Avoid restricted alias" \#-}
 
 -- | This module provides for identifiers definitions for records.
 module #{configModuleName}.Identifiers where
@@ -185,6 +186,9 @@ mkRecordDataType config@Config {..} record@Record {..} =
 {-\# LANGUAGE OverloadedStrings \#-}
 {-\# LANGUAGE StandaloneDeriving \#-}
 {-\# LANGUAGE TypeOperators \#-}
+{-\# OPTIONS_GHC -Wno-unrecognised-pragmas \#-}
+{-\# HLINT ignore "Avoid restricted alias" \#-}
+{-\# HLINT ignore "Use newtype instead of data" \#-}
 
 -- | This module provides for /#{title}/ record definition, its database mapping and other related definitions.
 module #{configModuleName}.Records.#{cnsName} where
