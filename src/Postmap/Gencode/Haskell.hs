@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections #-}
 
 module Postmap.Gencode.Haskell where
 
@@ -124,7 +125,7 @@ mkRecordId Record {..} =
         let tName = unRecordName recordName <> "Id"
             cName = "Mk" <> tName
             title = fromMaybe (unRecordName recordName) recordTitle
-            tType = fromMaybe (defFieldType fieldColumnType) fieldType
+            tType = fromMaybe (snd $ defFieldType fieldColumnType) fieldType
             tModule = filterMaybe (not . T.null) . T.dropEnd 1 . T.dropWhileEnd (/= '.') $ tType
          in ( tModule
             , [i|-- | Identifier type for "#{title}" record.
@@ -255,12 +256,13 @@ table#{cnsName} =
 mkRecordDataTypeField :: Config -> Record -> Field -> (T.Text, T.Text)
 mkRecordDataTypeField _config record@Record {..} field@Field {..} =
   let fName = mkRecordFieldName record field
-      fType'
-        | fieldIsPrimaryKey = mkRecordIdTypeName recordName
+      (isArr, fType')
+        | fieldIsPrimaryKey = (False, mkRecordIdTypeName recordName)
         | otherwise = case fieldReference of
-            Just FieldReference {..} -> mkRecordIdTypeName fieldReferenceRecord
-            Nothing -> fromMaybe (defFieldType fieldColumnType) fieldType
-      fType = if fieldNotNullable then fType' else [i|(Data.Maybe.Maybe #{fType'})|]
+            Just FieldReference {..} -> (False, mkRecordIdTypeName fieldReferenceRecord)
+            Nothing -> maybe (defFieldType fieldColumnType) (False,) fieldType
+      fType'' = if fieldNotNullable then fType' else [i|(Data.Maybe.Maybe #{fType'})|]
+      fType = if isArr then [i|[#{fType''}]|] else fType''
       fDesc = maybe "" (" -- ^ " <>) fieldDescription
    in (fType', [i|#{fName} :: !(Rel8.Column f #{fType})#{fDesc}|])
 
@@ -280,30 +282,32 @@ mkRecordColMapping record field@Field {..} =
    in [i|#{fName} = "#{fCol}"|]
 
 
-defFieldType :: T.Text -> T.Text
-defFieldType "date" = "Data.Time.Day"
-defFieldType "time" = "Data.Time.TimeOfDay"
-defFieldType "timestamp" = "Data.Time.LocalTime"
-defFieldType "timestamptz" = "Data.Time.UTCTime"
-defFieldType "jsonb" = "Data.Aeson.Value"
-defFieldType "json" = "Data.Aeson.Value"
-defFieldType "uuid" = "Data.UUID.UUID"
-defFieldType "text" = "Data.Text.Text"
-defFieldType "varchar" = "Data.Text.Text"
-defFieldType "int2" = "Data.Int.Int16"
-defFieldType "int4" = "Data.Int.Int32"
-defFieldType "int8" = "Data.Int.Int64"
-defFieldType "float4" = "GHC.Float.Float"
-defFieldType "float8" = "GHC.Float.Double"
-defFieldType "numeric" = "Data.Scientific.Scientific"
-defFieldType "bool" = "Data.Bool.Bool"
-defFieldType "bytea" = "Data.ByteString.ByteString"
-defFieldType "inet" = "Data.Text.Text"
-defFieldType "cidr" = "Data.Text.Text"
-defFieldType "macaddr" = "Data.Text.Text"
-defFieldType "macaddr8" = "Data.Text.Text"
-defFieldType "bit" = "Data.Text.Text"
-defFieldType x = [i|<unknown database column type to map: #{x}>|]
+defFieldType :: T.Text -> (Bool, T.Text)
+defFieldType "date" = (False, "Data.Time.Day")
+defFieldType "time" = (False, "Data.Time.TimeOfDay")
+defFieldType "timestamp" = (False, "Data.Time.LocalTime")
+defFieldType "timestamptz" = (False, "Data.Time.UTCTime")
+defFieldType "jsonb" = (False, "Data.Aeson.Value")
+defFieldType "json" = (False, "Data.Aeson.Value")
+defFieldType "uuid" = (False, "Data.UUID.UUID")
+defFieldType "text" = (False, "Data.Text.Text")
+defFieldType "varchar" = (False, "Data.Text.Text")
+defFieldType "int2" = (False, "Data.Int.Int16")
+defFieldType "int4" = (False, "Data.Int.Int32")
+defFieldType "int8" = (False, "Data.Int.Int64")
+defFieldType "float4" = (False, "GHC.Float.Float")
+defFieldType "float8" = (False, "GHC.Float.Double")
+defFieldType "numeric" = (False, "Data.Scientific.Scientific")
+defFieldType "bool" = (False, "Data.Bool.Bool")
+defFieldType "bytea" = (False, "Data.ByteString.ByteString")
+defFieldType "inet" = (False, "Data.Text.Text")
+defFieldType "cidr" = (False, "Data.Text.Text")
+defFieldType "macaddr" = (False, "Data.Text.Text")
+defFieldType "macaddr8" = (False, "Data.Text.Text")
+defFieldType "bit" = (False, "Data.Text.Text")
+defFieldType x = case T.unpack x of
+  '_' : st -> (True, snd $ defFieldType (T.pack st))
+  _ -> (False, [i|<unknown database column type to map: #{x}>|])
 
 
 mkRecordHkdTypeName :: Record -> T.Text
@@ -360,4 +364,4 @@ formatCode src = do
   (exitCode, out, err) <- TP.readProcess proc
   case exitCode of
     ExitSuccess -> pure (TL.toStrict (TLE.decodeUtf8 out))
-    ExitFailure _ -> error ("ERROR: Failed to format Haskell code using fourmolu" <> BLC.unpack err)
+    ExitFailure _ -> error ("ERROR: Failed to format Haskell code using fourmolu" <> BLC.unpack err <> ". Code to be formatted:\n" <> T.unpack src)
