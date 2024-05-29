@@ -33,6 +33,7 @@ library:
     - hasql
     - hasql-th
     - optparse-applicative
+    - pandoc
     - parsec
     - string-interpolate
     - template-haskell

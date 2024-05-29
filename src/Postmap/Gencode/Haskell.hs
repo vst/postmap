@@ -18,6 +18,7 @@ import Postmap.Spec (Field (..), FieldName (..), FieldReference (..), Record (..
 import System.Exit
 import qualified System.Process.Typed as TP
 import qualified Text.Casing as Casing
+import qualified Text.Pandoc as Pandoc
 
 
 data Config = Config
@@ -156,21 +157,21 @@ instance Autodocodec.HasCodec #{tName} where
 
 
 generateRecord :: Config -> Record -> IO T.Text
-generateRecord config@Config {..} record =
-  let (n, dt) = mkRecordDataType config record
-   in do
-        content <- formatCode dt
-        TIO.writeFile (configOutputRecordModuleFile config n) content
-        pure $ configModuleName <> ".Records." <> n
+generateRecord config@Config {..} record = do
+  (n, dt) <- mkRecordDataType config record
+  content <- formatCode dt
+  TIO.writeFile (configOutputRecordModuleFile config n) content
+  pure $ configModuleName <> ".Records." <> n
 
 
-mkRecordDataType :: Config -> Record -> (T.Text, T.Text)
-mkRecordDataType config@Config {..} record@Record {..} =
+mkRecordDataType :: Config -> Record -> IO (T.Text, T.Text)
+mkRecordDataType config@Config {..} record@Record {..} = do
+  docs <- maybe (pure Nothing) (fmap (Just . T.unlines . fmap ("-- " <>) . T.lines) . mdToHaddock) recordDescription
+  iFlds <- mapM (mkRecordDataTypeField config record) recordFields
   let hkdName = mkRecordHkdTypeName record
       cnsName = mkRecordConstructorName record
       title = fromMaybe (unRecordName recordName) recordTitle
       table = [i|"#{unTableSchemaName recordTableSchema}"."#{unTableName recordTableName}"|] :: T.Text
-      iFlds = fmap (mkRecordDataTypeField config record) recordFields
       fields = T.intercalate "\n  , " $ fmap snd iFlds
       modules'' = mapMaybe (filterMaybe (not . T.null) . T.dropEnd 1 . T.dropWhileEnd (/= '.') . fst) iFlds
       modules' = ["Data.Maybe" | not (all fieldNotNullable recordFields)] <> modules''
@@ -211,7 +212,7 @@ import Prelude (($))
 -- * Data Definition
 
 
--- | Data type representing the /#{title}/ record backed by database table @#{table}@.
+-- | Data type representing the /#{title}/ record backed by database table @#{table}@.#{maybe "" (\x -> "\n--\n" <> x <> "\n") docs}
 data #{hkdName} f = #{cnsName}
   { #{fields}
   }
@@ -259,11 +260,12 @@ table#{cnsName} =
           }
     }
 |]
-   in (cnsName, content)
+   in pure (cnsName, content)
 
 
-mkRecordDataTypeField :: Config -> Record -> Field -> (T.Text, T.Text)
-mkRecordDataTypeField _config record@Record {..} field@Field {..} =
+mkRecordDataTypeField :: Config -> Record -> Field -> IO (T.Text, T.Text)
+mkRecordDataTypeField _config record@Record {..} field@Field {..} = do
+  docs <- maybe (pure Nothing) (fmap (Just . T.unlines . fmap ("-- " <>) . T.lines . ("^" <>)) . mdToHaddock) fieldDescription
   let fName = mkRecordFieldName record field
       (isArr, fType')
         | fieldIsPrimaryKey = (False, mkRecordIdTypeName recordName)
@@ -272,16 +274,16 @@ mkRecordDataTypeField _config record@Record {..} field@Field {..} =
             Nothing -> maybe (defFieldType fieldColumnType) (False,) fieldType
       fType'' = if fieldNotNullable then fType' else [i|(Data.Maybe.Maybe #{fType'})|]
       fType = if isArr then [i|[#{fType''}]|] else fType''
-      fDesc = maybe "" (" -- ^ " <>) fieldDescription
-   in (fType', [i|#{fName} :: !(Rel8.Column f #{fType})#{fDesc}|])
+      fDesc = fromMaybe "" docs
+   in pure (fType', [i|#{fName} :: !(Rel8.Column f #{fType})#{fDesc}|])
 
 
 mkRecordJsonField :: Record -> Field -> T.Text
 mkRecordJsonField record field@Field {..} =
   let jName = T.pack . Casing.snake . T.unpack $ unFieldName fieldName
       fName = mkRecordFieldName record field
-      fDesc = fromMaybe "<undocumented>" fieldDescription
-   in [i|Autodocodec.requiredField "#{jName}" "#{fDesc}" Autodocodec..= #{fName}|]
+      fDesc = show $ fromMaybe "<undocumented>" fieldDescription
+   in [i|Autodocodec.requiredField "#{jName}" #{fDesc} Autodocodec..= #{fName}|]
 
 
 mkRecordColMapping :: Record -> Field -> T.Text
@@ -374,3 +376,11 @@ formatCode src = do
   case exitCode of
     ExitSuccess -> pure (TL.toStrict (TLE.decodeUtf8 out))
     ExitFailure _ -> error ("ERROR: Failed to format Haskell code using fourmolu" <> BLC.unpack err <> ". Code to be formatted:\n" <> T.unpack src)
+
+
+mdToHaddock :: T.Text -> IO T.Text
+mdToHaddock txt = Pandoc.runIOorExplode $ do
+  md <- Pandoc.readMarkdown Pandoc.def {Pandoc.readerExtensions = readerExtensions} txt
+  Pandoc.writeHaddock Pandoc.def {Pandoc.writerReferenceLinks = True} md
+  where
+    readerExtensions = Pandoc.enableExtension Pandoc.Ext_definition_lists Pandoc.githubMarkdownExtensions
