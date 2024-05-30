@@ -7,7 +7,7 @@ module Postmap.Gencode.Haskell where
 
 import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.List as List
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, isNothing, mapMaybe)
 import Data.String.Interpolate (i)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
@@ -127,7 +127,7 @@ instance Autodocodec.HasCodec Data.UUID.UUID where
 
 mkRecordId :: Record -> Maybe (Maybe T.Text, T.Text)
 mkRecordId Record {..} =
-  case List.find fieldIsPrimaryKey recordFields of
+  case List.find (\x -> fieldIsPrimaryKey x && isNothing (fieldReference x)) recordFields of
     Nothing -> Nothing
     Just Field {..} ->
       Just $
@@ -267,11 +267,12 @@ mkRecordDataTypeField :: Config -> Record -> Field -> IO (T.Text, T.Text)
 mkRecordDataTypeField _config record@Record {..} field@Field {..} = do
   docs <- maybe (pure Nothing) (fmap (Just . T.unlines . fmap ("-- " <>) . T.lines . ("^" <>)) . mdToHaddock) fieldDescription
   let fName = mkRecordFieldName record field
-      (isArr, fType')
-        | fieldIsPrimaryKey = (False, mkRecordIdTypeName recordName)
-        | otherwise = case fieldReference of
-            Just FieldReference {..} -> (False, mkRecordIdTypeName fieldReferenceRecord)
-            Nothing -> maybe (defFieldType fieldColumnType) (False,) fieldType
+      (isArr, fType') = case fieldReference of
+        Just FieldReference {..} -> (False, mkRecordIdTypeName fieldReferenceRecord)
+        Nothing ->
+          if fieldIsPrimaryKey
+            then (False, mkRecordIdTypeName recordName)
+            else maybe (defFieldType fieldColumnType) (False,) fieldType
       fType'' = if fieldNotNullable then fType' else [i|(Data.Maybe.Maybe #{fType'})|]
       fType = if isArr then [i|[#{fType''}]|] else fType''
       fDesc = fromMaybe "" docs
