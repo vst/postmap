@@ -36,6 +36,7 @@ data Table = Table
   , tableColumns :: ![Column]
   , tableUniques :: ![[ColumnName]]
   , tablePrimaryKey :: !(Maybe ColumnName)
+  , tableIsView :: !Bool
   }
   deriving stock (Eq, Generic, Show)
   deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec Table)
@@ -50,6 +51,7 @@ instance ADC.HasCodec Table where
         <*> ADC.requiredField "columns" "Columns of the table." ADC..= tableColumns
         <*> ADC.requiredField "uniques" "List of list of column names forming unique constraints." ADC..= tableUniques
         <*> ADC.requiredField "primary_key" "Name of the primary key column, if any." ADC..= tablePrimaryKey
+        <*> ADC.requiredField "is_view" "Whether the table is a view." ADC..= tableIsView
 
 
 newtype TableSchemaName = MkTableSchemaName
@@ -172,6 +174,7 @@ instance ADC.HasCodec ColumnReference where
 -- given schema name.
 fetchSchema :: Hasql.Connection.Connection -> T.Text -> IO [Table]
 fetchSchema conn schema = do
+  tables <- fetchTables conn schema
   columns <- fetchColumns conn schema
   primaryKeys <- fetchPrimaryKeys conn schema
   foreignKeys <- fetchForeignKeys conn schema
@@ -180,10 +183,11 @@ fetchSchema conn schema = do
   let dbFks = compileForeignKeys foreignKeys
   let dbUcs = compileUniqueConstraints uniqueConstraints
   let dbRef = (dbPks, dbFks, dbUcs) :: References
-  pure . List.sortOn ((<>) <$> unTableSchemaName . tableSchema <*> unTableName . tableName) . fmap snd . HM.toList $ foldl' (go dbRef) mempty columns
+  pure . List.sortOn ((<>) <$> unTableSchemaName . tableSchema <*> unTableName . tableName) . fmap snd . HM.toList $ foldl' (go tables dbRef) mempty columns
   where
-    go refs db c@(schemaName, tableName, _, _, _) =
-      addColumn refs c (addTable refs schemaName tableName db)
+    go tables refs db c@(schemaName, tableName, _, _, _) =
+      let isView = Just (schemaName, tableName, "VIEW") == List.find (\(s, t, _) -> s == schemaName && t == tableName) tables
+       in addColumn refs c (addTable refs schemaName tableName isView db)
 
 
 type DbTables = HM.HashMap (TableSchemaName, TableName) Table
@@ -201,8 +205,8 @@ type DbUniqueConstraints = HM.HashMap (TableSchemaName, TableName) [[ColumnName]
 type References = (DbPrimaryKeys, DbForeignKeys, DbUniqueConstraints)
 
 
-addTable :: References -> TableSchemaName -> TableName -> DbTables -> DbTables
-addTable (pks, _fks, ucs) tableSchema tableName db =
+addTable :: References -> TableSchemaName -> TableName -> Bool -> DbTables -> DbTables
+addTable (pks, _fks, ucs) tableSchema tableName isView db =
   maybe (HM.insert key newTable db) (const db) (HM.lookup key db)
   where
     key = (tableSchema, tableName)
@@ -213,6 +217,7 @@ addTable (pks, _fks, ucs) tableSchema tableName db =
         , tableColumns = []
         , tableUniques = fromMaybe [] (HM.lookup key ucs)
         , tablePrimaryKey = HM.lookup key pks
+        , tableIsView = isView
         }
 
 
@@ -253,6 +258,46 @@ compileUniqueConstraints =
       case HM.lookup (schema, table) acc of
         Nothing -> HM.insert (schema, table) [V.toList columns] acc
         Just xs -> HM.insert (schema, table) (V.toList columns : xs) acc
+
+
+-- ** Fetching Tables
+
+
+type StmtTypeTables =
+  ( TableSchemaName -- Table schema.
+  , TableName -- Table name.
+  , T.Text -- Table type.
+  )
+
+
+type StmtTypeTables' =
+  ( T.Text -- Table schema.
+  , T.Text -- Table name.
+  , T.Text -- Table name.
+  )
+
+
+toStmtTypeTables :: StmtTypeTables' -> StmtTypeTables
+toStmtTypeTables (schema, table, typ) =
+  (MkTableSchemaName schema, MkTableName table, typ)
+
+
+fetchTables :: Hasql.Connection.Connection -> T.Text -> IO [StmtTypeTables]
+fetchTables conn schema = do
+  result <- Hasql.Session.run (Hasql.Session.statement schema stmtTables) conn
+  either (_die . show) (pure . fmap toStmtTypeTables . V.toList) result
+
+
+stmtTables :: Hasql.Statement.Statement T.Text (V.Vector StmtTypeTables')
+stmtTables =
+  [Hasql.TH.vectorStatement|
+    SELECT "t"."table_schema" :: text
+         , "t"."table_name" :: text
+         , "t"."table_type" :: text
+      FROM "information_schema"."tables" as "t"
+     WHERE "t"."table_schema" = $1 :: text
+       AND "t"."table_type" IN ('BASE TABLE', 'VIEW')
+  |]
 
 
 -- ** Fetching Columns

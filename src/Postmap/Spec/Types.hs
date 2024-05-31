@@ -58,6 +58,7 @@ data Record = Record
   , recordTableName :: !TableName
   , recordFields :: ![Field]
   , recordUniques :: ![[FieldName]]
+  , recordIsView :: !Bool
   }
   deriving stock (Eq, Generic, Show)
   deriving (Aeson.FromJSON, Aeson.ToJSON) via (ADC.Autodocodec Record)
@@ -74,6 +75,7 @@ instance ADC.HasCodec Record where
         <*> ADC.requiredField "tableName" "Name of the table." ADC..= recordTableName
         <*> ADC.requiredField "fields" "Fields in the record." ADC..= recordFields
         <*> ADC.requiredField "uniques" "Unique constraints in the record." ADC..= recordUniques
+        <*> ADC.requiredField "isView" "Whether the record is coming from a view." ADC..= recordIsView
 
 
 newtype RecordName = MkRecordName

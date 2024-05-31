@@ -35,6 +35,7 @@ fromTable ordering Table {..} =
     , recordTableName = tableName
     , recordFields = orderFields ordering (fmap fromColumn tableColumns)
     , recordUniques = fmap (fmap mkFieldNameFromColumnName) tableUniques
+    , recordIsView = tableIsView
     }
 
 
