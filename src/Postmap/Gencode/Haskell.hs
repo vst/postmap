@@ -173,6 +173,7 @@ mkRecordDataType config@Config {..} record@Record {..} = do
       title = fromMaybe (unRecordName recordName) recordTitle
       table = [i|"#{unTableSchemaName recordTableSchema}"."#{unTableName recordTableName}"|] :: T.Text
       fields = T.intercalate "\n  , " $ fmap snd iFlds
+      hasMultipleFields = length iFlds > 1
       modules'' = mapMaybe (filterMaybe (not . T.null) . T.dropEnd 1 . T.dropWhileEnd (/= '.') . fst) iFlds
       modules' = ["Data.Maybe" | not (all fieldNotNullable recordFields)] <> modules''
       modules =
@@ -199,7 +200,6 @@ mkRecordDataType config@Config {..} record@Record {..} = do
 {-\# LANGUAGE TypeOperators \#-}
 {-\# OPTIONS_GHC -Wno-unrecognised-pragmas \#-}
 {-\# HLINT ignore "Avoid restricted alias" \#-}
-{-\# HLINT ignore "Use newtype instead of data" \#-}
 
 -- | This module provides for /#{title}/ record definition, its database mapping and other related definitions.
 module #{configModuleName}.Records.#{cnsName} where
@@ -213,7 +213,7 @@ import Prelude (($))
 
 
 -- | Data type representing the /#{title}/ record backed by database table @#{table}@.#{maybe "" (\x -> "\n--\n" <> x <> "\n") docs}
-data #{hkdName} f = #{cnsName}
+#{if hasMultipleFields then "data" else "newtype" :: T.Text} #{hkdName} f = #{cnsName}
   { #{fields}
   }
   deriving stock (GHC.Generics.Generic)
@@ -276,7 +276,11 @@ mkRecordDataTypeField _config record@Record {..} field@Field {..} = do
       fType'' = if fieldNotNullable then fType' else [i|(Data.Maybe.Maybe #{fType'})|]
       fType = if isArr then [i|[#{fType''}]|] else fType''
       fDesc = fromMaybe "" docs
-   in pure (fType', [i|#{fName} :: !(Rel8.Column f #{fType})#{fDesc}|])
+      ffType =
+        if length recordFields > 1
+          then [i|!(Rel8.Column f #{fType})|]
+          else [i|Rel8.Column f #{fType}|] :: T.Text
+   in pure (fType', [i|#{fName} :: #{ffType}#{fDesc}|])
 
 
 mkRecordJsonField :: Record -> Field -> T.Text
