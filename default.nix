@@ -12,9 +12,6 @@ let
   ## Import nixpkgs pinned by niv:
   pkgs = import sources.nixpkgs { inherit system; };
 
-  ## Import nixpkgs pinned by niv:
-  pkgs-unstable = import sources.nixpkgs-unstable { inherit system; };
-
   ##################
   ## LOAD HELPERS ##
   ##################
@@ -110,7 +107,7 @@ let
       thisHaskell.hpack
 
       ## Application dependencies:
-      pkgs-unstable.d2
+      pkgs.d2
 
       ## Other build inputs for various development requirements:
       pkgs.docker-client
