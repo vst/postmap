@@ -285,7 +285,7 @@ mkRecordDataTypeField _config record@Record {..} field@Field {..} = do
 
 mkRecordJsonField :: Record -> Field -> T.Text
 mkRecordJsonField record field@Field {..} =
-  let jName = T.pack . Casing.snake . T.unpack $ unFieldName fieldName
+  let jName = T.toLower . T.pack . Casing.snake . T.unpack $ unFieldName fieldName
       fName = mkRecordFieldName record field
       fDesc = show $ fromMaybe "<undocumented>" fieldDescription
    in [i|Autodocodec.requiredField "#{jName}" #{fDesc} Autodocodec..= #{fName}|]
