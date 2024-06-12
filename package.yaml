@@ -28,10 +28,13 @@ library:
     - brick
     - bytestring
     - casing
+    - effectful
     - githash
     - hashable
     - hasql
     - hasql-th
+    - http-api-data
+    - hyperbole
     - optparse-applicative
     - pandoc
     - parsec

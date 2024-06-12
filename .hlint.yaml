@@ -29,8 +29,11 @@
 - extensions:
     - default: false # All extension are banned by default.
     - name:
+        - DataKinds
+        - DeriveAnyClass
         - DeriveGeneric
         - DerivingVia
+        - FlexibleContexts
         - NamedFieldPuns
         - OverloadedStrings
         - QuasiQuotes
@@ -38,6 +41,7 @@
         - TemplateHaskell
         - TupleSections
         - TypeApplications
+        - TypeOperators
 
 ################
 # CUSTOM RULES #
