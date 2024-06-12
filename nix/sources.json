@@ -1,4 +1,11 @@
 {
+    "hyperbole": {
+        "sha256": "0lfdginsy4pjwbrbjhsac4la1gnmp8s34pn8bwv2pmw9zrwhw8cw",
+        "type": "tarball",
+        "url": "https://hackage.haskell.org/package/hyperbole-0.3.6/hyperbole-0.3.6.tar.gz",
+        "url_template": "https://hackage.haskell.org/package/hyperbole-<version>/hyperbole-<version>.tar.gz",
+        "version": "0.3.6"
+    },
     "nixpkgs": {
         "branch": "release-24.05",
         "description": "Nix Packages collection",
@@ -10,5 +17,12 @@
         "type": "tarball",
         "url": "https://github.com/NixOS/nixpkgs/archive/4e08cafd686c7b2a191a82e593762c3a095f88eb.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "web-view": {
+        "sha256": "11xig8xfhd1rmj7m8ajmcf6bfr4qskzk90qh54fgh4ahwiv6j3ms",
+        "type": "tarball",
+        "url": "https://hackage.haskell.org/package/web-view-0.4.0/web-view-0.4.0.tar.gz",
+        "url_template": "https://hackage.haskell.org/package/web-view-<version>/web-view-<version>.tar.gz",
+        "version": "0.4.0"
     }
 }

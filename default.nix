@@ -58,7 +58,11 @@ let
   thisHaskell = mkHaskell {
     haskell = baseHaskell;
     packages = thisHaskellPackagesAll;
-    overrides = self: super: { };
+    overrides = self: super: {
+      http-api-data = super.http-api-data_0_6;
+      hyperbole = self.callCabal2nixWithOptions "hyperbole" sources.hyperbole "--no-check" { };
+      web-view = self.callCabal2nixWithOptions "web-view" sources.web-view "--no-check" { };
+    };
   };
 
   ###########

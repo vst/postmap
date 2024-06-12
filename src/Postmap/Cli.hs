@@ -21,6 +21,7 @@ import qualified Postmap.Gencode.Haskell as Gencode.Haskell
 import Postmap.Introspect (mkColumnName)
 import qualified Postmap.Introspect as Introspect
 import qualified Postmap.Meta as Meta
+import qualified Postmap.Serve as Serve
 import qualified Postmap.Spec as Spec
 import qualified Postmap.Tui as Tui
 import System.Exit (ExitCode (..))
@@ -92,6 +93,7 @@ commandSchema = OA.hsubparser (OA.command "schema" (OA.info parser infomod) <> O
     parser =
       commandSchemaInit
         <|> commandSchemaTui
+        <|> commandSchemaServe
         <|> commandSchemaDiagrams
 
 
@@ -151,6 +153,31 @@ doSchemaTui fp = do
       pure (ExitFailure 1)
     Right schema -> do
       Tui.runTui schema
+      pure ExitSuccess
+
+
+-- ** schema serve
+
+
+-- | Definition for @schema serve@ CLI command.
+commandSchemaServe :: OA.Parser (IO ExitCode)
+commandSchemaServe = OA.hsubparser (OA.command "serve" (OA.info parser infomod) <> OA.metavar "serve")
+  where
+    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Run Web-based schema editor." <> OA.footer "This command runs the Web-based schema editor."
+    parser =
+      doSchemaServe
+        <$> OA.strOption (OA.short 'f' <> OA.long "file" <> OA.help "Path to the schema file.")
+
+
+doSchemaServe :: FilePath -> IO ExitCode
+doSchemaServe fp = do
+  eSchema <- ADC.Yaml.eitherDecodeYamlViaCodec @Spec.Spec <$> B.readFile fp
+  case eSchema of
+    Left err -> do
+      TIO.putStrLn ("Error while parsing schema file: " <> Z.Text.tshow err)
+      pure (ExitFailure 1)
+    Right schema -> do
+      Serve.runWeb schema
       pure ExitSuccess
 
 
