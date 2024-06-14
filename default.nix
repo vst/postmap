@@ -95,6 +95,7 @@ let
       thisHaskell.haskell-language-server
       thisHaskell.hlint
       thisHaskell.hpack
+      thisHaskell.weeder
 
       ## Application dependencies:
       pkgs.d2

@@ -169,6 +169,6 @@ _hlint
 _cabal_build
 _cabal_run
 _cabal_test
-# _weeder
+_weeder
 _cabal_haddock
 printf "Finished all in %ss\n" "$(_get_diff "${_scr_start}" "$(_get_now)")"
