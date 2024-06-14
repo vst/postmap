@@ -1,0 +1,13 @@
+roots = [
+  ## Definitions we always need:
+  "^Main.main$",
+  "^Postmap.Cli.*$",
+  "^Paths_postmap.*",
+
+  ## Temporary suspensions:
+  "^Postmap.Spec.FromSchema.fromSchemaJson$",
+  "^Postmap.Spec.FromSchema.test*",
+  "^Postmap.Spec.Types.lowerAlpha$",
+  "^Zamazingo.*",
+]
+type-class-roots = true
