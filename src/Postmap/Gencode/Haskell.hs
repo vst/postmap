@@ -299,6 +299,7 @@ mkRecordColMapping record field@Field {..} =
 
 
 defFieldType :: T.Text -> (Bool, T.Text)
+defFieldType "bpchar" = (False, "Data.Char.Char")
 defFieldType "date" = (False, "Data.Time.Day")
 defFieldType "time" = (False, "Data.Time.TimeOfDay")
 defFieldType "timestamp" = (False, "Data.Time.LocalTime")
