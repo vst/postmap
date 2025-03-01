@@ -35,6 +35,7 @@
         - DerivingVia
         - FlexibleContexts
         - NamedFieldPuns
+        - OverloadedLists
         - OverloadedStrings
         - QuasiQuotes
         - RecordWildCards
