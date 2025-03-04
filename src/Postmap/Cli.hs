@@ -22,7 +22,6 @@ import Postmap.Introspect (mkColumnName)
 import qualified Postmap.Introspect as Introspect
 import qualified Postmap.Meta as Meta
 import qualified Postmap.Spec as Spec
-import qualified Postmap.Tui as Tui
 import System.Exit (ExitCode (..))
 import qualified Zamazingo.Text as Z.Text
 
@@ -91,7 +90,6 @@ commandSchema = OA.hsubparser (OA.command "schema" (OA.info parser infomod) <> O
     infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Schema commands." <> OA.footer "This command provides schema commands."
     parser =
       commandSchemaInit
-        <|> commandSchemaTui
         <|> commandSchemaDiagrams
 
 
@@ -127,31 +125,6 @@ doSchemaInit (InitSourceDatabase u s os) = do
   let ordering = rights $ fmap mkColumnName (T.splitOn "," os)
   BC.putStrLn (ADC.Yaml.encodeYamlViaCodec (Spec.fromSchema ordering tables))
   pure ExitSuccess
-
-
--- ** schema tui
-
-
--- | Definition for @schema tui@ CLI command.
-commandSchemaTui :: OA.Parser (IO ExitCode)
-commandSchemaTui = OA.hsubparser (OA.command "tui" (OA.info parser infomod) <> OA.metavar "tui")
-  where
-    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Run schema editor." <> OA.footer "This command runs the schema TUI."
-    parser =
-      doSchemaTui
-        <$> OA.strOption (OA.short 'f' <> OA.long "file" <> OA.help "Path to the schema file.")
-
-
-doSchemaTui :: FilePath -> IO ExitCode
-doSchemaTui fp = do
-  eSchema <- ADC.Yaml.eitherDecodeYamlViaCodec @Spec.Spec <$> B.readFile fp
-  case eSchema of
-    Left err -> do
-      TIO.putStrLn ("Error while parsing schema file: " <> Z.Text.tshow err)
-      pure (ExitFailure 1)
-    Right schema -> do
-      Tui.runTui schema
-      pure ExitSuccess
 
 
 -- ** schema diagrams

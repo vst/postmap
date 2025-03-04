@@ -21,7 +21,6 @@ library:
     - aeson
     - autodocodec
     - autodocodec-yaml
-    - brick
     - bytestring
     - casing
     - githash
@@ -38,7 +37,6 @@ library:
     - typed-process
     - unordered-containers
     - vector
-    - vty
 executables:
   postmap:
     main: Main.hs
