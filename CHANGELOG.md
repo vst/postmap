@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.0.2](https://github.com/vst/postmap/compare/v0.0.1...v0.0.2) (2025-03-05)
+
+
+### Features
+
+* refactor, allow overrides instead of direct schema manipulation ([2d89a19](https://github.com/vst/postmap/commit/2d89a19141e3c8c2c9a763674725a5f5de21ab20))
+
+
+### Bug Fixes
+
+* drop Web-based interface ([24ddcc7](https://github.com/vst/postmap/commit/24ddcc7ed46065513aea34217ca5dc47317ec3f1))
+* **tui:** drop TUI implementation ([bcbd6c2](https://github.com/vst/postmap/commit/bcbd6c23e8cb1b3738e04c020782ab469ca6e715))
+
 ## 0.0.1 (2024-06-18)
 
 
