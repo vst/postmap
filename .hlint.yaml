@@ -16,11 +16,13 @@
     - { name: Data.ByteString.Lazy, as: BL }
     - { name: Data.ByteString.Lazy.Char8, as: BLC }
     - { name: Data.Text, as: T }
-    - { name: Data.Text.Lazy, as: TL }
     - { name: Data.Text.Encoding, as: TE }
-    - { name: Zamazingo.Text, as: Z.Text, importStyle: qualified, asRequired: true }
     - { name: Data.Text.IO, as: TIO }
+    - { name: Data.Text.Lazy, as: TL }
     - { name: Options.Applicative, as: OA }
+    - { name: Zamazingo.Text, as: Z.Text, importStyle: qualified, asRequired: true }
+    - { name: Postmap.Database.*, within: [Postmap.Database, Postmap.Database.**] }
+    - { name: Postmap.Database, as: PD, importStyle: qualified, asRequired: true }
 
 ##########################
 # EXTENSION RESTRICTIONS #
@@ -29,20 +31,15 @@
 - extensions:
     - default: false # All extension are banned by default.
     - name:
-        - DataKinds
-        - DeriveAnyClass
         - DeriveGeneric
         - DerivingVia
         - FlexibleContexts
-        - NamedFieldPuns
+        - LambdaCase
         - OverloadedLists
         - OverloadedStrings
         - QuasiQuotes
         - RecordWildCards
         - TemplateHaskell
-        - TupleSections
-        - TypeApplications
-        - TypeOperators
 
 ################
 # CUSTOM RULES #

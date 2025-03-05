@@ -5,9 +5,8 @@ roots = [
   "^Paths_postmap.*",
 
   ## Temporary suspensions:
-  "^Postmap.Spec.FromSchema.fromSchemaJson$",
-  "^Postmap.Spec.FromSchema.test*",
-  "^Postmap.Spec.Types.lowerAlpha$",
+  "^Postmap.Codegen.Haskell.Common.caseSchemaName$",
+  "^Postmap.Codegen.Haskell.Common.columnNameToFieldName$",
   "^Zamazingo.*",
 ]
 type-class-roots = true

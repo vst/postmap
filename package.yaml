@@ -24,18 +24,16 @@ library:
     - bytestring
     - casing
     - githash
-    - hashable
     - hasql
     - hasql-th
     - optparse-applicative
-    - pandoc
     - parsec
+    - profunctors
     - string-interpolate
     - template-haskell
     - text
     - time
     - typed-process
-    - unordered-containers
     - vector
 executables:
   postmap:

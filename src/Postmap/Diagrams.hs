@@ -1,160 +1,48 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 
+-- | This module provides functions for generating diagrams from a database schema.
 module Postmap.Diagrams where
 
-import Data.Maybe (isJust, mapMaybe)
-import Data.String.Interpolate (i)
+import Data.Maybe (mapMaybe)
 import qualified Data.Text as T
-import qualified Data.Text.IO as TIO
-import Postmap.Spec (Field (..), FieldName (..), FieldReference (..), Record (..), RecordName (..), Spec (..))
-import qualified System.Process.Typed as TP
+import qualified Postmap.Database as PD
+import qualified Zamazingo.D2 as Z.D2
 
 
-runDiagrams :: FilePath -> Spec -> IO ()
-runDiagrams path Spec {..} = do
-  runDiagramMaster path specRecords
-  mapM_ (runDiagramPerRecord path) specRecords
+-- | Renders a given database schema as a set of diagrams.
+--
+-- The diagrams are rendered in files under the given directory path.
+--
+-- 1. One for all tables in the schema.
+-- 2. One for each table in the schema.
+runDiagrams :: FilePath -> PD.Database -> IO ()
+runDiagrams path PD.MkDatabase {..} = do
+  let d2schema = schemaToD2 databaseSchema
+  let d2tables = fmap (\t@PD.MkTable {..} -> (PD.tableNameToText tableName, tableToD2 t)) (PD.schemaTables databaseSchema)
+  Z.D2.renderD2SqlTables (path <> "schema.svg") d2schema
+  mapM_ (\(tName, t) -> Z.D2.renderD2SqlTables (path <> "table_" <> T.unpack tName <> ".svg") [t]) d2tables
 
 
-runDiagramMaster :: FilePath -> [Record] -> IO ()
-runDiagramMaster path rs =
-  let d2Rec = fmap renderSqlRecord rs
-      d2Ref = fmap (\r@Record {..} -> T.intercalate "\n" $ mapMaybe (\f@Field {..} -> fmap (sqlRef False r f) fieldReference) recordFields) rs
-      d2Sch = T.intercalate "\n" d2Rec <> "\n" <> T.intercalate "\n" d2Ref
-      opDsl = path <> "/_schema.d2"
-      opSvg = path <> "/_schema.svg"
-   in do
-        TIO.writeFile opDsl d2Sch
-        TP.runProcess_ $ TP.proc "d2" ["--layout=elk", opDsl, opSvg]
+schemaToD2 :: PD.Schema -> [Z.D2.D2SqlTable]
+schemaToD2 PD.MkSchema {..} =
+  fmap tableToD2 schemaTables
 
 
-runDiagramPerRecord :: FilePath -> Record -> IO ()
-runDiagramPerRecord path record@Record {..} =
-  let d2 = renderRecordD2 record
-      opD2 = path <> "/" <> T.unpack (unRecordName recordName) <> ".d2"
-      opSvg = path <> "/" <> T.unpack (unRecordName recordName) <> ".svg"
-   in do
-        TIO.writeFile opD2 d2
-        TP.runProcess_ $ TP.proc "d2" ["--layout=elk", opD2, opSvg]
+tableToD2 :: PD.Table -> Z.D2.D2SqlTable
+tableToD2 table@PD.MkTable {..} =
+  let d2SqlTableName = PD.tableNameToText tableName
+      d2SqlTableColumns = fmap (columnToD2 table) tableColumns
+   in Z.D2.MkD2SqlTable {..}
 
 
-renderRecordD2 :: Record -> T.Text
-renderRecordD2 record@Record {..} =
-  let d2Rec = renderSqlRecord record
-      d2Ref = T.intercalate "\n" $ mapMaybe (\f@Field {..} -> fmap (sqlRef True record f) fieldReference) recordFields
-      d2Ent =
-        T.intercalate "\n"
-          . fmap (<> ".class: record")
-          . filter (/= sqlRecordName recordName)
-          $ mapMaybe (\Field {..} -> sqlRecordName . fieldReferenceRecord <$> fieldReference) recordFields
-   in [i|
-classes: {
-  record: {
-    style: {
-      border-radius: 8
-      font-size: 24
-      bold: false
-    }
-  }
-}
-
-#{d2Ent}
-
-#{d2Rec}
-
-#{d2Ref}
-|]
-
-
--- * Sql Record
-
-
-renderSqlRecord :: Record -> T.Text
-renderSqlRecord Record {..} =
-  let fields = fmap renderSqlTableField recordFields
-   in [i|#{sqlRecordName recordName} {
-  shape: sql_table
-  #{T.intercalate "\n  " fields}
-}|]
-
-
--- * Sql Fields
-
-
-renderSqlTableField :: Field -> T.Text
-renderSqlTableField field@Field {..} =
-  let constraints = T.intercalate ";" (sqlFieldConstraints field)
-   in [i|#{sqlFieldName fieldName}: #{fieldType} {constraint: [#{constraints}]}|]
-
-
-sqlFieldConstraints :: Field -> [T.Text]
-sqlFieldConstraints Field {..} =
-  let pk = (["primary_key" | fieldIsPrimaryKey])
-      uq = (["unique" | fieldIsUnique])
-      fk = (["foreign_key" | isJust fieldReference])
-   in pk <> uq <> fk
-
-
--- * SQL References
-
-
-sqlRef :: Bool -> Record -> Field -> FieldReference -> T.Text
-sqlRef simple record field FieldReference {..} =
-  let fr = sqlRecordNameFromRecord record
-      ff = sqlFieldNameFromField field
-      tr = sqlRecordName fieldReferenceRecord
-      tf = sqlFieldName fieldReferenceField
-   in if simple
-        then [i|#{fr}.#{ff} -> #{tr}|]
-        else [i|#{fr}.#{ff} -> #{tr}.#{tf}|]
-
-
--- * Helpers
-
-
-sqlFieldName :: FieldName -> T.Text
-sqlFieldName f =
-  let fn = unFieldName f
-   in fn <> if fn `elem` _reserved then "_" else ""
-
-
-sqlFieldNameFromField :: Field -> T.Text
-sqlFieldNameFromField Field {..} =
-  sqlFieldName fieldName
-
-
-sqlRecordName :: RecordName -> T.Text
-sqlRecordName =
-  unRecordName
-
-
-sqlRecordNameFromRecord :: Record -> T.Text
-sqlRecordNameFromRecord Record {..} =
-  sqlRecordName recordName
-
-
-_reserved :: [T.Text]
-_reserved =
-  [ "class"
-  , "classes"
-  , "constraint"
-  , "direction"
-  , "grid-columns"
-  , "grid-gap"
-  , "grid-rows"
-  , "height"
-  , "horizontal-gap"
-  , "icon"
-  , "label"
-  , "left"
-  , "link"
-  , "near"
-  , "shape"
-  , "style"
-  , "tooltip"
-  , "top"
-  , "vertical-gap"
-  , "width"
-  ]
+columnToD2 :: PD.Table -> PD.Column -> Z.D2.D2SqlColumn
+columnToD2 PD.MkTable {..} PD.MkColumn {..} =
+  let d2SqlColumnName = PD.columnNameToText columnName
+      d2SqlColumnType = PD.pgTypeToText columnType
+      d2SqlColumnPK = maybe False (PD.isColumnPartOfPrimaryKey columnName) tablePrimaryKey
+      d2SqlColumnFK =
+        (\PD.MkColumnReference {..} -> (PD.tableNameToText columnReferenceTable, PD.columnNameToText columnReferenceColumn))
+          <$> mapMaybe (PD.findTargetReferenceForColumn columnName) tableForeignKeys
+      d2SqlColumnUNQ = any (PD.isColumnUnique columnName) tableUniqueConstraints
+   in Z.D2.MkD2SqlColumn {..}
