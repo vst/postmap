@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications #-}
 
 -- | This module provides top-level definitions for the CLI program.
 module Postmap.Cli where
@@ -11,19 +10,14 @@ import qualified Data.Aeson as Aeson
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy.Char8 as BLC
-import Data.Either (rights)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Hasql.Connection
 import qualified Options.Applicative as OA
+import qualified Postmap.Codegen.Haskell.Rel8
+import qualified Postmap.Database as PD
 import qualified Postmap.Diagrams as Diagrams
-import qualified Postmap.Gencode.Haskell as Gencode.Haskell
-import Postmap.Introspect (mkColumnName)
-import qualified Postmap.Introspect as Introspect
 import qualified Postmap.Meta as Meta
-import qualified Postmap.Serve as Serve
-import qualified Postmap.Spec as Spec
-import qualified Postmap.Tui as Tui
 import System.Exit (ExitCode (..))
 import qualified Zamazingo.Text as Z.Text
 
@@ -51,7 +45,7 @@ cli =
 optProgram :: OA.Parser (IO ExitCode)
 optProgram =
   commandIntrospect
-    <|> commandSchema
+    <|> commandDiagrams
     <|> commandGencode
     <|> commandVersion
 
@@ -64,140 +58,86 @@ optProgram =
 
 -- | Definition for @introspect@ CLI command.
 commandIntrospect :: OA.Parser (IO ExitCode)
-commandIntrospect = OA.hsubparser (OA.command "introspect" (OA.info parser infomod) <> OA.metavar "introspect")
+commandIntrospect =
+  OA.hsubparser (OA.command "introspect" (OA.info parser infomod) <> OA.metavar "introspect")
   where
-    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Introspect database schema." <> OA.footer "This command introspect a database schema and produces its structure."
+    infomod =
+      OA.fullDesc
+        <> infoModHeader
+        <> OA.progDesc "Introspect database schema."
+        <> OA.footer "This command introspects a database schema and produces its structure."
     parser =
       doIntrospect
-        <$> OA.strOption (OA.short 'u' <> OA.long "uri" <> OA.help "Database connection URI.")
-        <*> OA.strOption (OA.short 's' <> OA.long "schema" <> OA.value "public" <> OA.showDefault <> OA.help "Database schema to introspect.")
+        <$> OA.strOption
+          ( OA.short 'u'
+              <> OA.long "uri"
+              <> OA.help "Database connection URI."
+          )
+        <*> OA.strOption
+          ( OA.short 's'
+              <> OA.long "schema"
+              <> OA.value "public"
+              <> OA.showDefault
+              <> OA.help "Database schema to introspect."
+          )
+        <*> OA.option
+          optParseOutputFormat
+          ( OA.short 'f'
+              <> OA.long "format"
+              <> OA.value OutputFormatJson
+              <> OA.showDefault
+              <> OA.help "Output format."
+          )
 
 
 -- | @introspect@ CLI command program.
-doIntrospect :: B.ByteString -> T.Text -> IO ExitCode
-doIntrospect u s = do
-  Right conn <- Hasql.Connection.acquire u
-  tables <- Introspect.fetchSchema conn s
-  BLC.putStrLn (Aeson.encode tables)
-  pure ExitSuccess
-
-
--- ** schema
-
-
--- | Definition for @schema@ CLI command.
-commandSchema :: OA.Parser (IO ExitCode)
-commandSchema = OA.hsubparser (OA.command "schema" (OA.info parser infomod) <> OA.metavar "schema")
-  where
-    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Schema commands." <> OA.footer "This command provides schema commands."
-    parser =
-      commandSchemaInit
-        <|> commandSchemaTui
-        <|> commandSchemaServe
-        <|> commandSchemaDiagrams
-
-
--- ** schema init
-
-
--- | Definition for @schema init@ CLI command.
-commandSchemaInit :: OA.Parser (IO ExitCode)
-commandSchemaInit = OA.hsubparser (OA.command "init" (OA.info parser infomod) <> OA.metavar "init")
-  where
-    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Initialize schema." <> OA.footer "This command initializes the schema."
-    parser =
-      doSchemaInit <$> (argEmpty <|> argDatabase)
-    argEmpty =
-      InitSourceEmpty <$ OA.switch (OA.short 'e' <> OA.long "empty" <> OA.help "Initialize empty schema.")
-    argDatabase =
-      InitSourceDatabase
-        <$> OA.strOption (OA.short 'u' <> OA.long "uri" <> OA.help "Database connection URI.")
-        <*> OA.strOption (OA.short 's' <> OA.long "schema" <> OA.value "public" <> OA.showDefault <> OA.help "Database schema to initialize.")
-        <*> OA.strOption (OA.short 'o' <> OA.long "column-ordering" <> OA.value "" <> OA.showDefault <> OA.help "Preferred column ordering.")
-
-
-data InitSource
-  = InitSourceEmpty
-  | InitSourceDatabase B.ByteString T.Text T.Text
-
-
-doSchemaInit :: InitSource -> IO ExitCode
-doSchemaInit InitSourceEmpty = BLC.putStrLn (Aeson.encode Spec.emptySchema) >> pure ExitSuccess
-doSchemaInit (InitSourceDatabase u s os) = do
-  Right conn <- Hasql.Connection.acquire u
-  tables <- Introspect.fetchSchema conn s
-  let ordering = rights $ fmap mkColumnName (T.splitOn "," os)
-  BC.putStrLn (ADC.Yaml.encodeYamlViaCodec (Spec.fromSchema ordering tables))
-  pure ExitSuccess
-
-
--- ** schema tui
-
-
--- | Definition for @schema tui@ CLI command.
-commandSchemaTui :: OA.Parser (IO ExitCode)
-commandSchemaTui = OA.hsubparser (OA.command "tui" (OA.info parser infomod) <> OA.metavar "tui")
-  where
-    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Run schema editor." <> OA.footer "This command runs the schema TUI."
-    parser =
-      doSchemaTui
-        <$> OA.strOption (OA.short 'f' <> OA.long "file" <> OA.help "Path to the schema file.")
-
-
-doSchemaTui :: FilePath -> IO ExitCode
-doSchemaTui fp = do
-  eSchema <- ADC.Yaml.eitherDecodeYamlViaCodec @Spec.Spec <$> B.readFile fp
-  case eSchema of
+doIntrospect :: B.ByteString -> T.Text -> OutputFormat -> IO ExitCode
+doIntrospect u s f = do
+  eConn <- Hasql.Connection.acquire u
+  case eConn of
     Left err -> do
-      TIO.putStrLn ("Error while parsing schema file: " <> Z.Text.tshow err)
+      TIO.putStrLn ("Error while connecting to database: " <> Z.Text.tshow err)
       pure (ExitFailure 1)
-    Right schema -> do
-      Tui.runTui schema
+    Right conn -> do
+      let dName = PD.MkDatabaseName (PD.MkIdentifier "database")
+      let sName = PD.MkSchemaName (PD.MkIdentifier s)
+      tables <- PD.introspect dName sName conn
+      case f of
+        OutputFormatJson -> BLC.putStrLn (Aeson.encode tables)
+        OutputFormatYaml -> BC.putStrLn (ADC.Yaml.encodeYamlViaCodec tables)
       pure ExitSuccess
 
 
--- ** schema serve
+-- ** diagrams
 
 
--- | Definition for @schema serve@ CLI command.
-commandSchemaServe :: OA.Parser (IO ExitCode)
-commandSchemaServe = OA.hsubparser (OA.command "serve" (OA.info parser infomod) <> OA.metavar "serve")
+-- | Definition for @diagrams@ CLI command.
+commandDiagrams :: OA.Parser (IO ExitCode)
+commandDiagrams =
+  OA.hsubparser (OA.command "diagrams" (OA.info parser infomod) <> OA.metavar "diagrams")
   where
-    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Run Web-based schema editor." <> OA.footer "This command runs the Web-based schema editor."
+    infomod =
+      OA.fullDesc
+        <> infoModHeader
+        <> OA.progDesc "Produce Diagrams."
+        <> OA.footer "This command produces diagrams."
     parser =
-      doSchemaServe
-        <$> OA.strOption (OA.short 'f' <> OA.long "file" <> OA.help "Path to the schema file.")
+      doDiagrams
+        <$> OA.strOption
+          ( OA.short 's'
+              <> OA.long "schema"
+              <> OA.help "Path to the database schema file."
+          )
+        <*> OA.strOption
+          ( OA.short 'd'
+              <> OA.long "directory"
+              <> OA.help "Path to the output directory."
+          )
 
 
-doSchemaServe :: FilePath -> IO ExitCode
-doSchemaServe fp = do
-  eSchema <- ADC.Yaml.eitherDecodeYamlViaCodec @Spec.Spec <$> B.readFile fp
-  case eSchema of
-    Left err -> do
-      TIO.putStrLn ("Error while parsing schema file: " <> Z.Text.tshow err)
-      pure (ExitFailure 1)
-    Right schema -> do
-      Serve.runWeb schema
-      pure ExitSuccess
-
-
--- ** schema diagrams
-
-
--- | Definition for @schema diagrams@ CLI command.
-commandSchemaDiagrams :: OA.Parser (IO ExitCode)
-commandSchemaDiagrams = OA.hsubparser (OA.command "diagrams" (OA.info parser infomod) <> OA.metavar "diagrams")
-  where
-    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Produce Diagrams." <> OA.footer "This command produces diagrams."
-    parser =
-      doSchemaDiagrams
-        <$> OA.strOption (OA.short 'f' <> OA.long "file" <> OA.help "Path to the schema file.")
-        <*> OA.strOption (OA.short 'o' <> OA.long "output-directory" <> OA.help "Path to output directory.")
-
-
-doSchemaDiagrams :: FilePath -> FilePath -> IO ExitCode
-doSchemaDiagrams fp dp = do
-  eSchema <- ADC.Yaml.eitherDecodeYamlViaCodec @Spec.Spec <$> B.readFile fp
+doDiagrams :: FilePath -> FilePath -> IO ExitCode
+doDiagrams fp dp = do
+  eSchema <- ADC.Yaml.eitherDecodeYamlViaCodec <$> B.readFile fp
   case eSchema of
     Left err -> do
       TIO.putStrLn ("Error while parsing schema file: " <> Z.Text.tshow err)
@@ -212,9 +152,14 @@ doSchemaDiagrams fp dp = do
 
 -- | Definition for @gencode@ CLI command.
 commandGencode :: OA.Parser (IO ExitCode)
-commandGencode = OA.hsubparser (OA.command "gencode" (OA.info parser infomod) <> OA.metavar "gencode")
+commandGencode =
+  OA.hsubparser (OA.command "gencode" (OA.info parser infomod) <> OA.metavar "gencode")
   where
-    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Code Generation Commands." <> OA.footer "This command provides code generationg commands."
+    infomod =
+      OA.fullDesc
+        <> infoModHeader
+        <> OA.progDesc "Code Generation Commands."
+        <> OA.footer "This command provides code generationg commands."
     parser =
       commandGencodeHaskell
 
@@ -224,30 +169,33 @@ commandGencode = OA.hsubparser (OA.command "gencode" (OA.info parser infomod) <>
 
 -- | Definition for @gencode haskell@ CLI command.
 commandGencodeHaskell :: OA.Parser (IO ExitCode)
-commandGencodeHaskell = OA.hsubparser (OA.command "haskell" (OA.info parser infomod) <> OA.metavar "haskell")
+commandGencodeHaskell =
+  OA.hsubparser (OA.command "haskell" (OA.info parser infomod) <> OA.metavar "haskell")
   where
-    infomod = OA.fullDesc <> infoModHeader <> OA.progDesc "Produce Haskell Code." <> OA.footer "This command produces Haskell code."
+    infomod =
+      OA.fullDesc
+        <> infoModHeader
+        <> OA.progDesc "Produce Haskell Code."
+        <> OA.footer "This command produces Haskell code."
     parser =
       doGencodeHaskell
-        <$> OA.strOption (OA.short 'f' <> OA.long "file" <> OA.help "Path to the schema file.")
-        <*> OA.strOption (OA.short 'm' <> OA.long "module" <> OA.help "Module name.")
-        <*> OA.strOption (OA.short 'o' <> OA.long "output-directory" <> OA.help "Path to output directory.")
+        <$> OA.strOption (OA.short 's' <> OA.long "schema" <> OA.help "Path to the schema file.")
+        <*> OA.strOption (OA.short 'c' <> OA.long "config" <> OA.help "Path to the configuration file.")
 
 
-doGencodeHaskell :: FilePath -> T.Text -> FilePath -> IO ExitCode
-doGencodeHaskell fp mn dp = do
-  eSchema <- ADC.Yaml.eitherDecodeYamlViaCodec @Spec.Spec <$> B.readFile fp
-  let config =
-        Gencode.Haskell.Config
-          { Gencode.Haskell.configDirectorySrc = dp
-          , Gencode.Haskell.configModuleName = mn
-          }
-  case eSchema of
-    Left err -> do
+doGencodeHaskell :: FilePath -> FilePath -> IO ExitCode
+doGencodeHaskell fpS fpC = do
+  eSchema <- ADC.Yaml.eitherDecodeYamlViaCodec <$> B.readFile fpS
+  eConfig <- ADC.Yaml.eitherDecodeYamlViaCodec <$> B.readFile fpC
+  case (eSchema, eConfig) of
+    (Left err, _) -> do
       TIO.putStrLn ("Error while parsing schema file: " <> Z.Text.tshow err)
       pure (ExitFailure 1)
-    Right schema -> do
-      Gencode.Haskell.generateHaskell config schema
+    (_, Left err) -> do
+      TIO.putStrLn ("Error while parsing config file: " <> Z.Text.tshow err)
+      pure (ExitFailure 1)
+    (Right schema, Right config) -> do
+      Postmap.Codegen.Haskell.Rel8.generate config schema
       pure ExitSuccess
 
 
@@ -308,3 +256,32 @@ runParserTestIO p as = case runParserTest p as of
   OA.Success _ -> pure (Right ())
   OA.Failure f -> pure (Left (show f))
   OA.CompletionInvoked _ -> pure (Right ())
+
+
+-- ** Output Formats
+
+
+data OutputFormat
+  = OutputFormatJson
+  | OutputFormatYaml
+  deriving (Bounded, Enum, Eq, Show)
+
+
+avilableOutputFormats :: [OutputFormat]
+avilableOutputFormats = [minBound .. maxBound]
+
+
+outputFormatToString :: OutputFormat -> String
+outputFormatToString OutputFormatJson = "json"
+outputFormatToString OutputFormatYaml = "yaml"
+
+
+outputFormatFromString :: String -> Either String OutputFormat
+outputFormatFromString "json" = Right OutputFormatJson
+outputFormatFromString "yaml" = Right OutputFormatYaml
+outputFormatFromString s = Left ("Unknown output format: " <> s)
+
+
+optParseOutputFormat :: OA.ReadM OutputFormat
+optParseOutputFormat =
+  OA.eitherReader outputFormatFromString

@@ -21,27 +21,20 @@ library:
     - aeson
     - autodocodec
     - autodocodec-yaml
-    - brick
     - bytestring
     - casing
-    - effectful
     - githash
-    - hashable
     - hasql
     - hasql-th
-    - http-api-data
-    - hyperbole
     - optparse-applicative
-    - pandoc
     - parsec
+    - profunctors
     - string-interpolate
     - template-haskell
     - text
     - time
     - typed-process
-    - unordered-containers
     - vector
-    - vty
 executables:
   postmap:
     main: Main.hs
